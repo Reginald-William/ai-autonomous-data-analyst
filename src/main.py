@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 import logging
 import os
 
+from src.routes.ask import router as ask_router
+
 load_dotenv()  # reads variables from a .env file and sets them in os.environ
 
 # log info (more standard) instead of print()
@@ -17,6 +19,7 @@ app = FastAPI(
     description="AI powered data analysis agent",
     version="0.1.0"
 )
+app.include_router(ask_router)
 
 @app.get("/")
 def root():
