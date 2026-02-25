@@ -26,19 +26,23 @@ An AI-powered system that accepts CSV data, understands its structure, and answe
 ## Setup
 
 1. Clone the repository
+
 2. Create a virtual environment and activate it
+
 3. Install dependencies
-\```
+```
 pip install -r requirements.txt
-\```
+```
+
 4. Create a `.env` file and add your Groq API key
-\```
+```
 GROQ_API_KEY=your_api_key_here
-\```
+```
+
 5. Run the server
-\```
+```
 uvicorn src.main:app --reload
-\```
+```
 
 ## API Endpoints
 - `GET /` — Welcome message
