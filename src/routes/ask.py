@@ -11,4 +11,4 @@ class AskRequest(BaseModel):
 @router.post("/ask")
 def ask_question(request: AskRequest):
     result = ask_llm(request.question, request.file_path)
-    return {"question": request.question, "generated_code": result}
+    return {"question": request.question, "result": result}

@@ -20,7 +20,7 @@ V1 — In Progress
 - [x] Health endpoint
 - [x] LLM integration with Groq
 - [x] /ask endpoint working
-- [ ] Code execution layer
+- [x] Code execution layer
 
 ### V2 — Code Execution Layer (Weeks 3-5)
 - [ ] Execute LLM generated Python code

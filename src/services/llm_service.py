@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
+from src.services.execution_service import execute_code
 
 import os
 import pandas as pd
@@ -12,7 +13,8 @@ client = Groq(
 def get_csv_context(file_path: str) -> str:
     df = pd.read_csv(file_path)
     context = f"Columns: {list(df.columns)}\n"
-    context += f"Data types: {dict(df.dtypes)}\n"
+    # context += f"Data types: {dict(df.dtypes)}\n" Too confusing for LLM, so we convert to string
+    context += f"Data types: { {col: str(dtype) for col, dtype in df.dtypes.items()} }\n"
     context += f"Sample rows:\n{df.head(3).to_string()}"
     return context
 
@@ -39,4 +41,5 @@ def ask_llm(question: str, file_path: str) -> str:
         ]
     )
     
-    return response.choices[0].message.content
+    generated_code = response.choices[0].message.content
+    return execute_code(generated_code, file_path)
