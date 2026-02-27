@@ -23,10 +23,7 @@ def execute_code(code: str, file_path: str) -> str:
         
         # Create a safe environment with only df available
         safe_environment = {"df": df}
-        
-        # Clean the code to remove any markdown formatting
-        code = clean_code(code)
-        
+                
         # Execute the generated code
         exec(code, safe_environment)
         
@@ -36,12 +33,11 @@ def execute_code(code: str, file_path: str) -> str:
         output = captured_output.getvalue()
         
         if not output:
-            return "Code executed successfully but produced no output"
+            raise Exception("Code executed successfully but produced no output. Make sure to print the final result.")
         
-        logger.info(f"Execution output:\n{output}")  # Added for testing purpose
         return output
     
     except Exception as e:
         sys.stdout = sys.__stdout__
         logger.error(f"Code execution failed: {str(e)}")
-        return f"Execution error: {str(e)}"
+        raise Exception(f"Execution error: {str(e)}")

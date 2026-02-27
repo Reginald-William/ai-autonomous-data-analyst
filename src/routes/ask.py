@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from src.services.llm_service import ask_llm
+from src.services.analyst_service import analyse
 
 router = APIRouter()
 
@@ -10,5 +10,5 @@ class AskRequest(BaseModel):
 
 @router.post("/ask")
 def ask_question(request: AskRequest):
-    result = ask_llm(request.question, request.file_path)
+    result = analyse(request.question, request.file_path)
     return {"question": request.question, "result": result}

@@ -1,6 +1,5 @@
 from dotenv import load_dotenv
 load_dotenv()
-from src.services.execution_service import execute_code
 
 import os
 import pandas as pd
@@ -18,6 +17,7 @@ def get_csv_context(file_path: str) -> str:
     context += f"Sample rows:\n{df.head(3).to_string()}"
     return context
 
+
 def ask_llm(question: str, file_path: str) -> str:
     context = get_csv_context(file_path)
     
@@ -30,11 +30,17 @@ def ask_llm(question: str, file_path: str) -> str:
     
     Write Python code using pandas to answer this question.
     The dataframe is already loaded as 'df'.
-    Return only the Python code, nothing else.
+    Always write actual Python code, never answer the question directly.
+    Even if the answer seems simple, always write Python code to compute it.
+    Never return anything other than Python code. Do not include any explanations, comments, or markdown formatting.
+    Only return the raw Python code.
+    Always print the final result using print().
+    Make sure the last line of your code is always a print statement which prints the output.
     """
     
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
+        temperature=0.1,  # Lower temperature for more deterministic output
         messages=[
             {"role": "system", "content": "You are a helpful data analyst who writes clean Python code."},
             {"role": "user", "content": prompt}
@@ -42,4 +48,39 @@ def ask_llm(question: str, file_path: str) -> str:
     )
     
     generated_code = response.choices[0].message.content
-    return execute_code(generated_code, file_path)
+    return generated_code
+
+# If the generated code fails, we can use the error message to ask the LLM to fix it
+def fix_code(question: str, failed_code: str, error: str, file_path: str) -> str:
+    context = get_csv_context(file_path)
+    
+    prompt = f"""
+    You are a data analyst. You have access to a CSV file with the following structure:
+    
+    {context}
+    
+    The user is asking: {question}
+    
+    You previously generated this code:
+    {failed_code}
+    
+    But it failed with this error:
+    {error}
+    
+    Fix the code and return only the corrected Python code, nothing else.
+    The dataframe is already loaded as 'df'.
+    Always print the final result using print().
+    Make sure the last line of your code is always a print statement which prints the output.
+    """
+    
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        temperature=0.1,
+        messages=[
+            {"role": "system", "content": "You are a helpful data analyst who writes clean Python code."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    
+    generated_code = response.choices[0].message.content
+    return generated_code
