@@ -5,6 +5,8 @@ import os
 import pandas as pd
 from groq import Groq
 
+MODEL_NAME = "llama-3.1-8b-instant"
+
 client = Groq(
     api_key=os.environ.get("GROQ_API_KEY")
 )
@@ -39,7 +41,7 @@ def ask_llm(question: str, file_path: str) -> str:
     """
     
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model=MODEL_NAME,
         temperature=0.1,  # Lower temperature for more deterministic output
         messages=[
             {"role": "system", "content": "You are a helpful data analyst who writes clean Python code."},
@@ -74,7 +76,7 @@ def fix_code(question: str, failed_code: str, error: str, file_path: str) -> str
     """
     
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model=MODEL_NAME,
         temperature=0.1,
         messages=[
             {"role": "system", "content": "You are a helpful data analyst who writes clean Python code."},
