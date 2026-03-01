@@ -2,12 +2,10 @@ import logging
 import time
 import pandas as pd
 from datetime import datetime
-from dotenv import load_dotenv
+from fastapi import HTTPException
 from src.services.llm_service import ask_llm, fix_code, MODEL_NAME
 from src.services.execution_service import execute_code, clean_code
 from src.utils.schemas import AnalysisResponse
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +14,16 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
     max_attempts = 3
     attempt = 1
 
-    df = pd.read_csv(file_path)
-    row_count = len(df)
-    column_count = len(df.columns)
-    file_name = file_path.split("/")[-1]
+    try:
+        df = pd.read_csv(file_path)
+        row_count = len(df)
+        column_count = len(df.columns)
+        file_name = file_path.split("/")[-1]
+        logger.info(f"CSV loaded: {row_count} rows, {column_count} columns")
+      
+    except FileNotFoundError:
+        logger.error(f"CSV file not found: {file_path}")
+        raise HTTPException(status_code=404, detail=f"CSV file not found: {file_path}")
     
     logger.info(f"Starting analysis for question: {question}")
     
@@ -31,10 +35,15 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
     while attempt <= max_attempts:
         try:
             logger.info(f"Attempt {attempt} of {max_attempts}")
+            exec_start = time.time()
             result = execute_code(generated_code, file_path)
+            exec_time = round(time.time() - exec_start, 2)
             time_taken = f"{round(time.time() - start_time, 2)}s"
-            logger.info("Execution successful")
             
+            logger.info("Execution successful")
+            logger.info(f"Execution completed in {exec_time}s")
+            logger.info(f"Result: {result.strip()}")
+
             return AnalysisResponse(
                 question=question,
                 result=result,

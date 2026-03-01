@@ -2,9 +2,6 @@ import pandas as pd
 import logging
 from io import StringIO
 import sys
-from dotenv import load_dotenv
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import logging
 import os
@@ -19,6 +21,16 @@ app = FastAPI(
     description="AI powered data analysis agent",
     version="0.1.0"
 )
+
+# Global exception handler (safety net for any unhandled exceptions)
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unexpected error: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected error occurred. Please try again later."}
+    )
+
 app.include_router(ask_router)
 
 @app.get("/")
