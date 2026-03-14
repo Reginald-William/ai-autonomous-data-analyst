@@ -1,11 +1,12 @@
 # Autonomous Data Analyst AI Agent
 
-An AI-powered system that accepts CSV data, understands its structure, and answers business questions by generating and executing Python code — with built-in retry logic and error handling.
+An AI-powered autonomous data analyst that accepts CSV data, understands its structure, retrieves relevant business context using RAG, and answers business questions by generating and executing Python code — with built-in retry logic and error handling.
 
 ## What it does
 - Accepts CSV file input
 - Understands data schema automatically
 - Answers business questions in natural language
+- Retrieves relevant business context using RAG
 - Generates Python code using an LLM to produce answers
 - Executes generated code safely in a sandboxed environment
 - Retries automatically if generated code fails
@@ -17,11 +18,12 @@ An AI-powered system that accepts CSV data, understands its structure, and answe
 - Groq (LLM provider)
 - Llama 3.1 8B (AI model)
 - Pandas
+- FAISS
 
 ## Project Phases
 - V1 — LLM + FastAPI ✅
 - V2 — Code Execution Layer ✅
-- V3 — RAG Integration
+- V3 — RAG Integration ✅
 - V4 — Multi Agent Orchestration
 - V5 — Deployment + Observability
 
@@ -86,7 +88,23 @@ Response:
 
 ## Architecture
 ```
-Request → FastAPI (ask.py) → Analyst Service → LLM Service (Groq) → Execution Service → Response
-                                     ↑                                      |
-                                     └──────── Retry if failed ─────────────┘
+Request → FastAPI (ask.py) → Analyst Service → RAG Service (FAISS) → Relevant Context ─┐
+                                    │                                                  │
+                                    └──────────→ LLM Service (Groq) ←──────────────────┘
+                                                        │
+                                                        ↓
+                                               Generated Python Code
+                                                        │
+                                                        ↓
+                                              Execution Service
+                                                        │
+                                                 ┌──────┴──────┐
+                                                 ↓             ↓
+                                              Success        Failure
+                                                 │             │
+                                                 │         Fix Code (LLM)
+                                                 │             │
+                                                 └──────┬──────┘
+                                                        ↓
+                                               Structured Response
 ```

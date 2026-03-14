@@ -10,7 +10,7 @@ Build an autonomous AI Data Analyst system that:
 - Evolves into multi-agent architecture
 
 ## Current Status
-V3 — In Progress
+V4 — In Progress
 
 ## Milestones
 
@@ -35,10 +35,13 @@ V3 — In Progress
 - [x] Global exception handler
 
 ### V3 — RAG Integration (Weeks 6-8)
-- [ ] Add embeddings
-- [ ] Store schema and docs in vector DB
-- [ ] Retrieval pipeline
-- [ ] Chunking strategy
+- [x] Business context documents created
+- [x] Data dictionary created
+- [x] Sentence transformer embedding model integrated
+- [x] Document loading and chunk splitting
+- [x] FAISS index built on startup
+- [x] Context retrieval with distance threshold
+- [x] RAG context injected into LLM prompt
 
 ### V4 — Multi Agent Orchestration (Weeks 9-12)
 - [ ] Planner agent
@@ -56,8 +59,8 @@ V3 — In Progress
 - Python
 - FastAPI
 - Groq (LLM provider)
-- Llama 3.1 8B
+- Llama 3.1 8B (AI model)
 - Pandas
-- FAISS (coming in V3)
+- FAISS
 - PostgreSQL (coming in V4)
 - Docker (coming in V5)
