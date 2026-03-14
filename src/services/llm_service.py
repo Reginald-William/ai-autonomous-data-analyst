@@ -25,14 +25,17 @@ def get_csv_context(file_path: str) -> str:
     return context
 
 
-def ask_llm(question: str, file_path: str) -> str:
-    context = get_csv_context(file_path)
+def ask_llm(question: str, file_path: str, rag_context: str = "") -> str:
+    csv_context = get_csv_context(file_path)
     
     prompt = f"""
     You are a data analyst. You have access to a CSV file with the following structure:
     
-    {context}
+    {csv_context}
     
+    Additional business context:
+    {rag_context}
+
     The user is asking: {question}
     
     Write Python code using pandas to answer this question.
@@ -68,13 +71,16 @@ def ask_llm(question: str, file_path: str) -> str:
         raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
 
 # If the generated code fails, we can use the error message to ask the LLM to fix it
-def fix_code(question: str, failed_code: str, error: str, file_path: str) -> str:
-    context = get_csv_context(file_path)
+def fix_code(question: str, failed_code: str, error: str, file_path: str, rag_context: str = "") -> str:
+    csv_context = get_csv_context(file_path)
     
     prompt = f"""
     You are a data analyst. You have access to a CSV file with the following structure:
     
-    {context}
+    {csv_context}
+
+    Additional business context:
+    {rag_context}
     
     The user is asking: {question}
     

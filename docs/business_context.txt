@@ -1,0 +1,31 @@
+Business Name: TechMart Electronics
+Business Type: Electronics Retail Chain
+Operating Since: 2020
+
+Business Overview:
+TechMart is an electronics retail chain operating across 4 regions in India.
+The business sells consumer electronics including Laptops, Phones and Tablets.
+Each store operates independently but reports to a central analytics system.
+
+Regions:
+- North: Delhi NCR stores
+- South: Chennai and surrounding areas
+- East: Kolkata metropolitan area
+- West: Mumbai and Pune stores
+
+Revenue:
+- All revenue figures are in Indian Rupees (INR)
+- Revenue represents gross revenue before tax
+- Refunds and returns are not deducted from revenue figures
+- Each row in the dataset represents a single transaction
+
+Products:
+- Laptop: High value item, average transaction value 12000-18000 INR
+- Phone: Mid range item, average transaction value 7500-10000 INR
+- Tablet: Mid range item, average transaction value 9000-15000 INR
+
+Business Goals:
+- Track monthly revenue trends across regions
+- Identify best performing regions and products
+- Monitor seasonal patterns in sales
+- Compare product performance across regions

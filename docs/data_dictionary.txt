@@ -1,0 +1,35 @@
+Dataset Name: TechMart Sales Data
+File: sample_data.csv
+Last Updated: 2024
+
+Columns:
+
+1. date
+   - Type: String (format: YYYY-MM-DD)
+   - Description: The date on which the transaction occurred
+   - Example values: 2024-01-15, 2024-03-05
+   - Notes: One row represents one transaction on this date
+
+2. revenue
+   - Type: Integer
+   - Description: Gross revenue generated from the transaction in Indian Rupees (INR)
+   - Example values: 15000, 8500, 12000
+   - Notes: This is gross revenue, refunds and taxes are not accounted for
+
+3. region
+   - Type: String
+   - Description: The geographical region where the store is located
+   - Valid values: North, South, East, West
+   - Notes: North=Delhi, South=Chennai, East=Kolkata, West=Mumbai
+
+4. product
+   - Type: String
+   - Description: The product category sold in the transaction
+   - Valid values: Laptop, Phone, Tablet
+   - Notes: These are the only three product categories TechMart sells
+
+Common Business Questions:
+- Total revenue by month: group by month, sum revenue
+- Best performing region: group by region, sum revenue, find max
+- Best selling product: group by product, sum revenue or count transactions
+- Monthly trends: group by month, sum revenue, observe pattern

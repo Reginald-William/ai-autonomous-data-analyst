@@ -2,10 +2,12 @@ from fastapi import FastAPI
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
 import logging
 import os
 
 from src.routes.ask import router as ask_router
+from src.services.rag_service import build_index
 
 load_dotenv()  # reads variables from a .env file and sets them in os.environ
 
@@ -16,10 +18,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__) 
 
+# Build FAISS index at startup function
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Building FAISS index on startup")
+    build_index("docs")
+    logger.info("FAISS index ready")
+    yield
+
+
 app = FastAPI(
     title="Autonomous Data Analyst",
     description="AI powered data analysis agent",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 # Global exception handler (safety net for any unhandled exceptions)

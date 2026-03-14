@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from src.services.llm_service import ask_llm, fix_code, MODEL_NAME
 from src.services.execution_service import execute_code, clean_code
+from src.services.rag_service import retrieve_context
 from src.utils.schemas import AnalysisResponse
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,10 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
     
     logger.info(f"Starting analysis for question: {question}")
     
-    # First attempt - generate and execute code
-    generated_code = ask_llm(question, file_path)
+    rag_context = retrieve_context(question)  # Retrieve relevant context from documents using RAG
+    generated_code = ask_llm(question, file_path, rag_context)  # First attempt - generate and execute code
     generated_code = clean_code(generated_code)
-    logger.info(f"Generated code:\n{generated_code}")  # Added for testing purposes
+    # logger.info(f"Generated code:\n{generated_code}")  # Added for testing purposes
     
     while attempt <= max_attempts:
         try:
@@ -78,6 +79,6 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
                 )
             
             # Fix the code and try again
-            generated_code = fix_code(question, generated_code, str(e), file_path)
+            generated_code = fix_code(question, generated_code, str(e), file_path, rag_context)
             generated_code = clean_code(generated_code)
             attempt += 1
