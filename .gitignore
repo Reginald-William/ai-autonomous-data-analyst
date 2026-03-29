@@ -11,4 +11,7 @@ data/*.db
 # data/.gitkeep is intentionally tracked to preserve the empty folder
 
 # Generated charts
-data/charts/
+# Ignore all files in the charts directory
+data/charts/*
+# But keep the .gitkeep file to preserve the empty charts directory
+!data/charts/.gitkeep
