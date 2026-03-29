@@ -16,6 +16,10 @@ client = Groq(
     api_key=os.environ.get("GROQ_API_KEY")
 )
 
+def get_llm_client():
+    return client
+
+
 def get_csv_context(file_path: str) -> str:
     df = pd.read_csv(file_path)
     context = f"Columns: {list(df.columns)}\n"

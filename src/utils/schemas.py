@@ -1,6 +1,5 @@
 from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional  # Added for optional fields (not used now)
+from typing import Optional, List
 
 class AnalysisResponse(BaseModel):
     question: str
@@ -13,3 +12,7 @@ class AnalysisResponse(BaseModel):
     column_count: int
     file_name: str
     timestamp: str
+    agents_used: List[str] = []
+    task_type: str = ""
+    reasoning: str = ""
+    chart_path: Optional[str] = None

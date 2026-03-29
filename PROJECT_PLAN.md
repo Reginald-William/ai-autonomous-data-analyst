@@ -49,6 +49,12 @@ V4 — In Progress
 - [ ] Python executor agent
 - [ ] Chart generator agent
 
+### Refactoring (after V4)
+- [ ] Move ask_llm, fix_code into PythonAgent as methods
+- [ ] Move execute_code, clean_code into PythonAgent as methods
+- [ ] Keep llm_service.py for shared client and model only
+- [ ] Delete execution_service.py
+
 ### V5 — Deployment + Observability
 - [ ] Docker
 - [ ] AWS/GCP deployment

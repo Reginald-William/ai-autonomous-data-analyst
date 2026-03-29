@@ -3,82 +3,98 @@ import time
 import pandas as pd
 from datetime import datetime
 from fastapi import HTTPException
-from src.services.llm_service import ask_llm, fix_code, MODEL_NAME
-from src.services.execution_service import execute_code, clean_code
-from src.services.rag_service import retrieve_context
+from src.services.llm_service import MODEL_NAME
+from src.agents.planner_agent import PlannerAgent
+from src.agents.python_agent import PythonAgent
+from src.agents.sql_agent import SQLAgent
+from src.agents.chart_agent import ChartAgent
 from src.utils.schemas import AnalysisResponse
+
 
 logger = logging.getLogger(__name__)
 
+planner = PlannerAgent()
+python_agent = PythonAgent()
+sql_agent = SQLAgent()
+chart_agent = ChartAgent()
+
 def analyse(question: str, file_path: str) -> AnalysisResponse:
     start_time = time.time()
-    max_attempts = 3
-    attempt = 1
 
     try:
         df = pd.read_csv(file_path)
         row_count = len(df)
         column_count = len(df.columns)
         file_name = file_path.split("/")[-1]
-        logger.info(f"CSV loaded: {row_count} rows, {column_count} columns")
-      
+        logger.info(f"CSV loaded: {row_count} rows, {column_count} columns | File: {file_name}")
+
     except FileNotFoundError:
         logger.error(f"CSV file not found: {file_path}")
         raise HTTPException(status_code=404, detail=f"CSV file not found: {file_path}")
-    
-    logger.info(f"Starting analysis for question: {question}")
-    
-    rag_context = retrieve_context(question)  # Retrieve relevant context from documents using RAG
-    generated_code = ask_llm(question, file_path, rag_context)  # First attempt - generate and execute code
-    generated_code = clean_code(generated_code)
-    # logger.info(f"Generated code:\n{generated_code}")  # Added for testing purposes
-    
-    while attempt <= max_attempts:
-        try:
-            logger.info(f"Attempt {attempt} of {max_attempts}")
-            exec_start = time.time()
-            result = execute_code(generated_code, file_path)
-            exec_time = round(time.time() - exec_start, 2)
-            time_taken = f"{round(time.time() - start_time, 2)}s"
-            
-            logger.info("Execution successful")
-            logger.info(f"Execution completed in {exec_time}s")
-            logger.info(f"Result: {result.strip()}")
 
-            return AnalysisResponse(
-                question=question,
-                result=result,
-                status="success",
-                attempts=attempt,
-                time_taken=time_taken,
-                model_used=MODEL_NAME,
-                row_count=row_count,
-                column_count=column_count,
-                file_name=file_name,
-                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            )
-        
-        except Exception as e:
-            logger.warning(f"Attempt {attempt} failed with error: {str(e)}")
-            
-            if attempt == max_attempts:
-                time_taken = f"{round(time.time() - start_time, 2)}s"
-                logger.error("All attempts failed")
-                
-                return AnalysisResponse(
-                    question=question,
-                    result="Unable to answer your question at this time. Please try again or rephrase your question.",
-                    status="failed",
-                    attempts=attempt,
-                    time_taken=time_taken,
-                    model_used=MODEL_NAME,
-                    row_count=row_count,
-                    column_count=column_count,
-                    file_name=file_name,
-                    timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                )
-            
-            # Fix the code and try again
-            generated_code = fix_code(question, generated_code, str(e), file_path, rag_context)
-            generated_code = clean_code(generated_code)
-            attempt += 1
+    plan = planner.run(question)
+    agents = plan.get("agents", ["python"])
+    task_type = plan.get("task_type", "analysis")
+    reasoning = plan.get("reasoning", "")
+
+    logger.info(f"Plan: task_type={task_type} | agents={agents}")
+
+    result = None
+    chart_path = None
+    agents_used = []
+
+    try:
+        if "python" in agents:
+            logger.info("Routing to Python agent")
+            result = python_agent.run(question, file_path)
+            agents_used.append("python")
+
+        elif "sql" in agents:
+            logger.info("Routing to SQL agent")
+            result = sql_agent.run(question, file_path)
+            agents_used.append("sql")
+
+        if "chart" in agents and result is not None:
+            logger.info("Routing to Chart agent")
+            chart_path = chart_agent.run(question, result, file_path)
+            agents_used.append("chart")
+
+    except Exception as e:
+        logger.error(f"Agent execution failed: {str(e)}")
+        time_taken = f"{round(time.time() - start_time, 2)}s"
+        return AnalysisResponse(
+            question=question,
+            result="Unable to answer your question at this time. Please try again or rephrase your question.",
+            status="failed",
+            attempts=1,
+            time_taken=time_taken,
+            model_used=MODEL_NAME,
+            row_count=row_count,
+            column_count=column_count,
+            file_name=file_name,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            agents_used=agents_used,
+            task_type=task_type,
+            reasoning=reasoning,
+            chart_path=chart_path
+        )
+
+    time_taken = f"{round(time.time() - start_time, 2)}s"
+    logger.info(f"Analysis complete | Time: {time_taken} | Agents: {agents_used}")
+
+    return AnalysisResponse(
+        question=question,
+        result=result,
+        status="success",
+        attempts=1,
+        time_taken=time_taken,
+        model_used=MODEL_NAME,
+        row_count=row_count,
+        column_count=column_count,
+        file_name=file_name,
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        agents_used=agents_used,
+        task_type=task_type,
+        reasoning=reasoning,
+        chart_path=chart_path
+    )
