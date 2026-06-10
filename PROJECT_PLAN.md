@@ -53,17 +53,17 @@ V4 — Completed | V4.1 Refactoring & Testing — In Progress
 - [x] RAG assisted planner routing rules
 
 ### V4.1 — Refactoring & Testing
-- [ ] Move ask_llm and fix_code into PythonAgent
-- [ ] Move execute_code and clean_code into PythonAgent
-- [ ] Keep llm_service.py for shared client and model only
-- [ ] Delete execution_service.py
-- [ ] Fix attempts field to reflect actual agent attempts
+- [x] Move ask_llm and fix_code into PythonAgent
+- [x] Move execute_code and clean_code into PythonAgent
+- [x] Keep llm_service.py for shared client and model only
+- [x] Delete execution_service.py
+- [x] Fix attempts field to reflect actual agent attempts
 - [ ] Test with different CSV files and schemas
 - [ ] Test edge cases - empty CSV, missing values, special characters
 - [ ] Test all agent routing with various question types
 - [ ] Test retry logic under failure conditions
 - [ ] Test RAG with questions that have no relevant context
-- [ ] Add routing_rules.txt to docs for RAG
+- [x] Add routing_rules.txt to docs for RAG
 
 ### V5 — Deployment + Observability
 - [ ] Docker containerization

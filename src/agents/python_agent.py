@@ -146,7 +146,7 @@ class PythonAgent:
             logger.error(f"Groq API call failed: {str(e)}")
             raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
 
-    def run(self, question: str, file_path: str) -> str:
+    def run(self, question: str, file_path: str) -> tuple[str, int]:
         logger.info(f"Python agent running for question: {question}")
 
         rag_context = retrieve_context(question)
@@ -159,7 +159,7 @@ class PythonAgent:
                 logger.info(f"Execution attempt {attempt} of {self.max_attempts}")
                 result = self.execute_code(generated_code, file_path)
                 logger.info("Execution successful")
-                return result
+                return result, attempt
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed: {str(e)}")

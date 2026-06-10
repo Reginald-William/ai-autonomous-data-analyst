@@ -43,15 +43,16 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
     chart_path = None
     agents_used = []
 
+    attempts = 1
     try:
         if "python" in agents:
             logger.info("Routing to Python agent")
-            result = python_agent.run(question, file_path)
+            result, attempts = python_agent.run(question, file_path)
             agents_used.append("python")
 
         elif "sql" in agents:
             logger.info("Routing to SQL agent")
-            result = sql_agent.run(question, file_path)
+            result, attempts = sql_agent.run(question, file_path)
             agents_used.append("sql")
 
         if "chart" in agents and result is not None:
@@ -66,7 +67,7 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
             question=question,
             result="Unable to answer your question at this time. Please try again or rephrase your question.",
             status="failed",
-            attempts=1,
+            attempts=attempts,
             time_taken=time_taken,
             model_used=MODEL_NAME,
             row_count=row_count,
@@ -86,7 +87,7 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
         question=question,
         result=result,
         status="success",
-        attempts=1,
+        attempts=attempts,
         time_taken=time_taken,
         model_used=MODEL_NAME,
         row_count=row_count,
