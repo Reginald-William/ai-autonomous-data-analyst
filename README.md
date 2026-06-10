@@ -96,7 +96,7 @@ Response:
 }
 ```
 
-## Architecture
+## Architecture (High Level)
 ```
 Request → FastAPI (ask.py) → Analyst Service
                                     │
