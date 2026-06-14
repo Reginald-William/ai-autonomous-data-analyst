@@ -75,6 +75,7 @@ class PythonAgent:
         Make sure the last line of your code is always a print statement.
         The dataframe is already loaded as 'df'.
         Return only the Python code, nothing else.
+        Be precise about statistical operations: use .mean() for average, .sum() for total, .median() for median, .std() for standard deviation.
         """
 
         try:

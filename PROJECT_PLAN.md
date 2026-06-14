@@ -10,7 +10,7 @@ Build an autonomous AI Data Analyst system that:
 - Evolves into multi-agent architecture
 
 ## Current Status
-V4 — Completed | V4.1 Refactoring & Testing — In Progress
+V4 — Completed | V4.1 Refactoring & Testing — In Progress (routing tests done, model upgraded to llama-3.3-70b-versatile)
 
 ## Milestones
 
@@ -60,7 +60,7 @@ V4 — Completed | V4.1 Refactoring & Testing — In Progress
 - [x] Fix attempts field to reflect actual agent attempts
 - [ ] Test with different CSV files and schemas
 - [ ] Test edge cases - empty CSV, missing values, special characters
-- [ ] Test all agent routing with various question types
+- [x] Test all agent routing with various question types
 - [ ] Test retry logic under failure conditions
 - [ ] Test RAG with questions that have no relevant context
 - [x] Add routing_rules.txt to docs for RAG
@@ -79,7 +79,7 @@ V4 — Completed | V4.1 Refactoring & Testing — In Progress
 - Python
 - FastAPI
 - Groq (LLM provider)
-- Llama 3.1 8B
+- Llama 3.3 70B Versatile (upgraded from 3.1 8B for better code generation accuracy)
 - Pandas
 - FAISS
 - Sentence Transformers

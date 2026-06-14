@@ -5,7 +5,7 @@ import os
 from groq import Groq
 import logging
 
-MODEL_NAME = "llama-3.1-8b-instant"  # Using as const for now, can be made dynamic later if needed
+MODEL_NAME = "llama-3.3-70b-versatile"  # Upgraded from llama-3.1-8b-instant for better code generation accuracy
 
 
 logger = logging.getLogger(__name__)
