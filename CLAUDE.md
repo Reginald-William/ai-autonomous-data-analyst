@@ -53,7 +53,7 @@ POST /ask → analyst_service.analyse()
 
 - **`src/services/analyst_service.py`**: Main orchestration. Loads CSV, extracts metadata, calls PlannerAgent, dispatches to agents, returns structured response.
 - **`src/services/rag_service.py`**: Builds a FAISS index on startup from `docs/` (business_context.txt, data_dictionary.txt). Every agent call retrieves relevant context via sentence-transformer embeddings.
-- **`src/services/llm_service.py`**: Legacy module holding Groq client init and shared prompt helpers. Still referenced by agents.
+- **`src/services/llm_service.py`**: Shared module holding Groq client init (`get_llm_client()`) and `MODEL_NAME` constant. Referenced by all agents.
 - **`src/services/database_service.py`**: On-demand CSV → SQLite conversion. Database files land in `data/`.
 
 ### Response Schema (`src/utils/schemas.py`)
@@ -62,7 +62,7 @@ POST /ask → analyst_service.analyse()
 
 ### Configuration
 
-- LLM: Groq with `llama-3.1-8b-instant`, temperature `0.1` for determinism
+- LLM: Groq with `llama-3.3-70b-versatile`, temperature `0.1` for determinism
 - Embeddings: `all-MiniLM-L6-v2` via sentence-transformers
 - FAISS index built at startup in `src/main.py` lifespan handler
 - Environment: `GROQ_API_KEY` required in `.env`
@@ -70,9 +70,9 @@ POST /ask → analyst_service.analyse()
 ### Data
 
 - Sample data: `sample_data.csv` — TechMart Electronics sales (date, revenue, region, product)
-- Business context for RAG: `docs/business_context.txt`, `docs/data_dictionary.txt`
+- Business context for RAG: `docs/business_context.txt`, `docs/data_dictionary.txt`, `docs/routing_rules.txt`
 - Generated databases: `data/*.db`; generated charts: `data/charts/`
 
 ### Current State (V4.1)
 
-The V4 refactoring migrated `ask_llm`, `fix_code`, `execute_code`, `clean_code` into `PythonAgent`. `src/services/llm_service.py` and `src/services/execution_service.py` are legacy modules that may still be referenced but are being phased out. V5 plans Docker deployment and observability.
+V4.1 refactoring is complete. `ask_llm`, `fix_code`, `execute_code`, `clean_code` have been migrated into `PythonAgent`. `src/services/llm_service.py` is now a clean shared module (client + model constant only). `src/services/execution_service.py` has been deleted. Model upgraded to `llama-3.3-70b-versatile` for better code generation accuracy. Routing tests passing. Remaining: edge case testing, retry logic testing, RAG testing. V4.2 plans dynamic model routing based on task complexity. V5 plans Docker deployment and observability.
