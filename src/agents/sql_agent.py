@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 from tabulate import tabulate
-from src.services.llm_service import get_llm_client, MODEL_NAME
+from src.services.llm_service import get_llm_client, get_model_for_complexity, DEFAULT_MODEL
 from src.services.database_service import load_csv_to_sqlite
 from src.services.rag_service import retrieve_context
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class SQLAgent:
     def __init__(self):
         self.client = get_llm_client()
-        self.model = MODEL_NAME
+        self.model = DEFAULT_MODEL
         self.max_attempts = 3
 
     def generate_sql(self, question: str, db_info: dict, rag_context: str = "") -> str:
@@ -102,8 +102,9 @@ class SQLAgent:
     def clean_sql(self, sql: str) -> str:
       return sql.replace("```sql", "").replace("```", "").strip()
     
-    def run(self, question: str, file_path: str) -> tuple[str, int]:
-        logger.info(f"SQL agent running for question: {question}")
+    def run(self, question: str, file_path: str, complexity: str = "medium") -> tuple[str, int, str]:
+        self.model = get_model_for_complexity(complexity)
+        logger.info(f"SQL agent running for question: {question} | complexity={complexity} | model={self.model}")
 
         db_info = load_csv_to_sqlite(file_path)
         rag_context = retrieve_context(question)
@@ -118,7 +119,7 @@ class SQLAgent:
                 logger.info(f"SQL execution attempt {attempt} of {self.max_attempts}")
                 result = self.execute_sql(sql, db_info["db_path"])
                 logger.info("SQL execution successful")
-                return result, attempt
+                return result, attempt, self.model
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed: {str(e)}")

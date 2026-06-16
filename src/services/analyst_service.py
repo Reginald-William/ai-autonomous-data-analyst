@@ -3,7 +3,7 @@ import time
 import pandas as pd
 from datetime import datetime
 from fastapi import HTTPException
-from src.services.llm_service import MODEL_NAME
+from src.services.llm_service import DEFAULT_MODEL
 from src.agents.planner_agent import PlannerAgent
 from src.agents.python_agent import PythonAgent
 from src.agents.sql_agent import SQLAgent
@@ -36,12 +36,13 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
         logger.error(f"CSV file not found: {file_path}")
         raise HTTPException(status_code=404, detail=f"CSV file not found: {file_path}")
 
-    plan = planner.run(question)
+    plan = planner.run(question, row_count)
     agents = plan.get("agents", ["python"])
     task_type = plan.get("task_type", "analysis")
+    complexity = plan.get("complexity", "medium")
     reasoning = plan.get("reasoning", "")
 
-    logger.info(f"Plan: task_type={task_type} | agents={agents}")
+    logger.info(f"Plan: task_type={task_type} | complexity={complexity} | agents={agents}")
 
     # If the planner determined the question is out of scope, return early
     if "none" in agents:
@@ -53,7 +54,7 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
             status="out_of_scope",
             attempts=0,
             time_taken=time_taken,
-            model_used=MODEL_NAME,
+            model_used=DEFAULT_MODEL,
             row_count=row_count,
             column_count=column_count,
             file_name=file_name,
@@ -67,22 +68,23 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
     result = None
     chart_path = None
     agents_used = []
+    model_used = DEFAULT_MODEL
 
     attempts = 1
     try:
         if "python" in agents:
             logger.info("Routing to Python agent")
-            result, attempts = python_agent.run(question, file_path)
+            result, attempts, model_used = python_agent.run(question, file_path, complexity)
             agents_used.append("python")
 
         elif "sql" in agents:
             logger.info("Routing to SQL agent")
-            result, attempts = sql_agent.run(question, file_path)
+            result, attempts, model_used = sql_agent.run(question, file_path, complexity)
             agents_used.append("sql")
 
         if "chart" in agents and result is not None:
             logger.info("Routing to Chart agent")
-            chart_path = chart_agent.run(question, result, file_path)
+            chart_path = chart_agent.run(question, result, file_path, complexity)
             agents_used.append("chart")
 
     except Exception as e:
@@ -94,7 +96,7 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
             status="failed",
             attempts=attempts,
             time_taken=time_taken,
-            model_used=MODEL_NAME,
+            model_used=model_used,
             row_count=row_count,
             column_count=column_count,
             file_name=file_name,
@@ -114,7 +116,7 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
         status="success",
         attempts=attempts,
         time_taken=time_taken,
-        model_used=MODEL_NAME,
+        model_used=model_used,
         row_count=row_count,
         column_count=column_count,
         file_name=file_name,

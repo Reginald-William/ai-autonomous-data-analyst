@@ -36,3 +36,16 @@ Task Types:
 - query: record retrieval, filtering → sql
 - visualization: any chart or graph request → python/sql + chart
 - comparison: comparing groups, regions, products, time periods → python
+
+Complexity Levels:
+- low: a single, self-contained metric requiring one operation on one column with no grouping
+  - The answer is a single number or value
+  - Examples: "How many rows?", "What is total revenue?", "What is the max price?"
+
+- medium: requires grouping, filtering, sorting, or aggregation across multiple categories, or any visualization
+  - The answer is a table, ranked list, or chart
+  - Examples: "Revenue by region", "Top 5 products by sales", "Show a bar chart of monthly revenue"
+
+- high: requires combining two or more separate computations, reasoning about change over time, or drawing a conclusion that spans the whole dataset
+  - The answer requires multiple steps before a final conclusion can be reached
+  - Examples: "Which region is growing fastest?", "How has revenue changed over time?", "Is there a correlation between product and region performance?", "Compare trends across regions and identify the best performer"
