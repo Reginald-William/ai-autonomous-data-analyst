@@ -30,7 +30,8 @@ An AI-powered autonomous data analyst that accepts CSV data, understands its str
 - V2 — Code Execution Layer ✅
 - V3 — RAG Integration ✅
 - V4 — Multi Agent Orchestration ✅
-- V4.1 — Refactoring & Testing 🔄 (code consolidated into agents, model upgraded, routing tests passing)
+- V4.1 — Refactoring & Testing ✅
+- V4.2 — Dynamic Model Routing (up next)
 - V5 — Deployment + Observability
 
 ## Setup

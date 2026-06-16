@@ -28,6 +28,10 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
         file_name = file_path.split("/")[-1]
         logger.info(f"CSV loaded: {row_count} rows, {column_count} columns | File: {file_name}")
 
+        if row_count == 0:
+            logger.warning(f"CSV file has no data rows: {file_path}")
+            raise HTTPException(status_code=400, detail="The CSV file contains no data rows. Please upload a file with at least one row of data.")
+
     except FileNotFoundError:
         logger.error(f"CSV file not found: {file_path}")
         raise HTTPException(status_code=404, detail=f"CSV file not found: {file_path}")
@@ -38,6 +42,27 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
     reasoning = plan.get("reasoning", "")
 
     logger.info(f"Plan: task_type={task_type} | agents={agents}")
+
+    # If the planner determined the question is out of scope, return early
+    if "none" in agents:
+        logger.info("Question out of scope — no agent dispatched")
+        time_taken = f"{round(time.time() - start_time, 2)}s"
+        return AnalysisResponse(
+            question=question,
+            result="This question cannot be answered from the provided data. Please ask a question related to the CSV file.",
+            status="out_of_scope",
+            attempts=0,
+            time_taken=time_taken,
+            model_used=MODEL_NAME,
+            row_count=row_count,
+            column_count=column_count,
+            file_name=file_name,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            agents_used=[],
+            task_type=task_type,
+            reasoning=reasoning,
+            chart_path=None
+        )
 
     result = None
     chart_path = None

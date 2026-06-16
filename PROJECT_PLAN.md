@@ -10,7 +10,7 @@ Build an autonomous AI Data Analyst system that:
 - Evolves into multi-agent architecture
 
 ## Current Status
-V4 — Completed | V4.1 Refactoring & Testing — In Progress (routing tests done, model upgraded to llama-3.3-70b-versatile)
+V4 — Completed | V4.1 Refactoring & Testing — Completed ✅ | V4.2 — Up Next
 
 ## Milestones
 
@@ -58,11 +58,11 @@ V4 — Completed | V4.1 Refactoring & Testing — In Progress (routing tests don
 - [x] Keep llm_service.py for shared client and model only
 - [x] Delete execution_service.py
 - [x] Fix attempts field to reflect actual agent attempts
-- [ ] Test with different CSV files and schemas
-- [ ] Test edge cases - empty CSV, missing values, special characters
+- [x] Test with different CSV files and schemas
+- [x] Test edge cases - empty CSV, missing values, special characters
 - [x] Test all agent routing with various question types
-- [ ] Test retry logic under failure conditions
-- [ ] Test RAG with questions that have no relevant context
+- [x] Test retry logic under failure conditions
+- [x] Test RAG with questions that have no relevant context
 - [x] Add routing_rules.txt to docs for RAG
 
 ### V4.2 — Dynamic Model Routing
