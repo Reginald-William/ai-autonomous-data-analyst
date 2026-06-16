@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 .env
 
+# Claude Code local config and memory
+.claude/
+
 # Mac system file just in case
 .DS_Store
 

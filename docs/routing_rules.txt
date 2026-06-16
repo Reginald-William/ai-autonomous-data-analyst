@@ -1,0 +1,38 @@
+Agent Routing Rules — Data Analysis System
+
+Available Agents:
+- python: data analysis, calculations, aggregations, and computations using pandas
+- sql: structured queries, filtering, and retrieving specific records from the dataset
+- chart: generating visual charts and graphs (always used after python or sql, never alone)
+
+Routing Rules:
+
+1. Use "python" when the question asks for:
+   - Calculations (totals, averages, sums, counts, percentages)
+   - Comparisons between groups or time periods
+   - Statistical analysis (min, max, median, trends)
+   - Ranked or sorted results
+   - Examples: "What is total revenue?", "Which product sold the most?", "Compare north vs south revenue"
+
+2. Use "sql" when the question asks to:
+   - Retrieve specific records or rows
+   - Filter data by a condition
+   - Look up exact values
+   - Examples: "Show me all transactions from Delhi", "List sales where revenue > 10000"
+
+3. Use "chart" (always combined with python or sql) when the question mentions:
+   - chart, graph, plot, visualize, visualization
+   - show me (in a visual context), bar, line, pie, histogram, scatter, horizontal
+   - Examples: "Plot revenue by region", "Show me a bar chart of monthly sales"
+
+4. Use ["python", "chart"] when the question requires both computation and visualization:
+   - Examples: "Show me a chart of total revenue by product", "Visualize monthly trends"
+
+5. Use ["sql", "chart"] when the question requires filtered data presented visually:
+   - Examples: "Show a bar chart of transactions from the North region"
+
+Task Types:
+- analysis: aggregations, calculations, statistical questions → python
+- query: record retrieval, filtering → sql
+- visualization: any chart or graph request → python/sql + chart
+- comparison: comparing groups, regions, products, time periods → python

@@ -17,7 +17,7 @@ An AI-powered autonomous data analyst that accepts CSV data, understands its str
 - Python
 - FastAPI
 - Groq (LLM provider)
-- Llama 3.1 8B (AI model)
+- Llama 3.3 70B Versatile (AI model)
 - Pandas
 - FAISS
 - Sentence Transformers
@@ -30,7 +30,8 @@ An AI-powered autonomous data analyst that accepts CSV data, understands its str
 - V2 — Code Execution Layer ✅
 - V3 — RAG Integration ✅
 - V4 — Multi Agent Orchestration ✅
-- V4.1 — Refactoring & Testing 🔄
+- V4.1 — Refactoring & Testing ✅
+- V4.2 — Dynamic Model Routing (up next)
 - V5 — Deployment + Observability
 
 ## Setup
@@ -84,7 +85,7 @@ Response:
     "status": "success",
     "attempts": 1,
     "time_taken": "2.1s",
-    "model_used": "llama-3.1-8b-instant",
+    "model_used": "llama-3.3-70b-versatile",
     "row_count": 12,
     "column_count": 4,
     "file_name": "sample_data.csv",
@@ -98,27 +99,28 @@ Response:
 
 ## Architecture (High Level)
 ```
-Request → FastAPI (ask.py) → Analyst Service
-                                    │
-                                    ↓
-                              RAG Service (FAISS)
-                          retrieves business context
-                                    │
-                                    ↓
-                              Planner Agent
-                          (LLM decides routing)
-                                    │
-                          ┌─────────┼──────────┐
-                          ↓         ↓          ↓
-                    Python Agent  SQL Agent  Chart Agent
-                    LLM+Pandas  LLM+SQLite  LLM+Matplotlib
-                          │         │          │
-                          └─────────┴──────────┘
-                                    │
-                        Retry Logic (max 3 attempts)
-                                    │
-                                    ↓
-                                  Result
-                            Structured Response
-                            (AnalysisResponse)
+POST /ask → Analyst Service
+                  │
+                  ├─ Empty CSV? → 400 Bad Request
+                  │
+                  ↓
+            RAG Service (FAISS)
+        retrieves business context
+                  │
+                  ↓
+            Planner Agent
+        (LLM decides routing)
+                  │
+        ┌─────────┼──────────┬─────────────┐
+        ↓         ↓          ↓             ↓
+   Python Agent  SQL Agent  Chart Agent  Out of Scope
+   LLM+Pandas  LLM+SQLite  LLM+Matplotlib  → clear message
+        │         │          │
+        └─────────┴──────────┘
+     Retry Logic (max 3 attempts per agent)
+                  │
+                  ↓
+          AnalysisResponse
+     (result, status, attempts,
+      agents_used, chart_path, ...)
 ```

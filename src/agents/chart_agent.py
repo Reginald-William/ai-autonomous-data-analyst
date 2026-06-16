@@ -59,7 +59,6 @@ class ChartAgent:
         logger.info(f"Chart agent running for question: {question}")
 
         chart_code = self.clean_code(self.generate_chart_code(question, data, file_path))
-        logger.info(f"Generated chart code:\n{chart_code}")
 
         try:
             df = pd.read_csv(file_path)

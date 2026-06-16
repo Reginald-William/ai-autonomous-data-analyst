@@ -75,6 +75,7 @@ class PythonAgent:
         Make sure the last line of your code is always a print statement.
         The dataframe is already loaded as 'df'.
         Return only the Python code, nothing else.
+        Be precise about statistical operations: use .mean() for average, .sum() for total, .median() for median, .std() for standard deviation.
         """
 
         try:
@@ -146,7 +147,7 @@ class PythonAgent:
             logger.error(f"Groq API call failed: {str(e)}")
             raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
 
-    def run(self, question: str, file_path: str) -> str:
+    def run(self, question: str, file_path: str) -> tuple[str, int]:
         logger.info(f"Python agent running for question: {question}")
 
         rag_context = retrieve_context(question)
@@ -159,7 +160,7 @@ class PythonAgent:
                 logger.info(f"Execution attempt {attempt} of {self.max_attempts}")
                 result = self.execute_code(generated_code, file_path)
                 logger.info("Execution successful")
-                return result
+                return result, attempt
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed: {str(e)}")

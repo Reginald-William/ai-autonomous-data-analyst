@@ -102,7 +102,7 @@ class SQLAgent:
     def clean_sql(self, sql: str) -> str:
       return sql.replace("```sql", "").replace("```", "").strip()
     
-    def run(self, question: str, file_path: str) -> str:
+    def run(self, question: str, file_path: str) -> tuple[str, int]:
         logger.info(f"SQL agent running for question: {question}")
 
         db_info = load_csv_to_sqlite(file_path)
@@ -118,7 +118,7 @@ class SQLAgent:
                 logger.info(f"SQL execution attempt {attempt} of {self.max_attempts}")
                 result = self.execute_sql(sql, db_info["db_path"])
                 logger.info("SQL execution successful")
-                return result
+                return result, attempt
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed: {str(e)}")

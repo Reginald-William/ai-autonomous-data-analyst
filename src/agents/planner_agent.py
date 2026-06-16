@@ -16,29 +16,31 @@ class PlannerAgent:
         rag_context = retrieve_context(question)
         
         prompt = f"""
-        You are a planner for a data analysis system. 
+        You are a planner for a data analysis system.
         You have these specialized agents available:
         - python: for data analysis, calculations, and computations using pandas
         - sql: for structured queries, filtering, and retrieving specific records
         - chart: for generating visual charts and graphs (always used after python or sql)
-        
+        - none: when the question cannot be answered from the CSV data at all
+
         Routing rules:
         - If the question mentions any of these words: chart, graph, plot, visualize, visualization, show me, bar, line, pie, histogram, scatter, horizontal — always include "chart" in agents
         - If the question asks to retrieve specific records or filter data — use "sql"
         - If the question asks for calculations, totals, averages, comparisons — use "python"
         - If the question needs both computation and visualization — use ["python", "chart"]
+        - If the question is about general world knowledge, external facts, or topics completely unrelated to the data (e.g. weather, geography, people, news) — use "none"
 
         Additional context:
         {rag_context}
-        
+
         Based on the user question, decide which agents to use and in what order.
-        
+
         User question: {question}
-        
+
         Respond ONLY with a JSON object in this exact format:
         {{
-            "task_type": "analysis|query|visualization|comparison",
-            "agents": ["python"] or ["sql"] or ["python", "chart"] or ["sql", "chart"],
+            "task_type": "analysis|query|visualization|comparison|out_of_scope",
+            "agents": ["python"] or ["sql"] or ["python", "chart"] or ["sql", "chart"] or ["none"],
             "reasoning": "brief explanation of why you chose these agents"
         }}
         """
