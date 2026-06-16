@@ -73,6 +73,6 @@ POST /ask → analyst_service.analyse()
 - Business context for RAG: `docs/business_context.txt`, `docs/data_dictionary.txt`, `docs/routing_rules.txt`
 - Generated databases: `data/*.db`; generated charts: `data/charts/`
 
-### Current State (V4.1)
+### Current State (V4.1 Complete — V4.2 Up Next)
 
-V4.1 refactoring is complete. `ask_llm`, `fix_code`, `execute_code`, `clean_code` have been migrated into `PythonAgent`. `src/services/llm_service.py` is now a clean shared module (client + model constant only). `src/services/execution_service.py` has been deleted. Model upgraded to `llama-3.3-70b-versatile` for better code generation accuracy. Routing tests passing. Remaining: edge case testing, retry logic testing, RAG testing. V4.2 plans dynamic model routing based on task complexity. V5 plans Docker deployment and observability.
+V4.1 is fully complete. `ask_llm`, `fix_code`, `execute_code`, `clean_code` migrated into `PythonAgent`. `src/services/llm_service.py` is a clean shared module (client + model constant only). `src/services/execution_service.py` deleted. Model upgraded to `llama-3.3-70b-versatile`. Empty CSV guard added (400 error when row_count == 0). Out-of-scope routing added — PlannerAgent returns `agents=["none"]` for questions unrelated to the CSV data. All 5 test scenarios passing. Test CSVs live in `tests/data/`. V4.2 plans dynamic model routing based on task complexity. V5 plans Docker deployment and observability.
