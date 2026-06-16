@@ -99,27 +99,28 @@ Response:
 
 ## Architecture (High Level)
 ```
-Request → FastAPI (ask.py) → Analyst Service
-                                    │
-                                    ↓
-                              RAG Service (FAISS)
-                          retrieves business context
-                                    │
-                                    ↓
-                              Planner Agent
-                          (LLM decides routing)
-                                    │
-                          ┌─────────┼──────────┐
-                          ↓         ↓          ↓
-                    Python Agent  SQL Agent  Chart Agent
-                    LLM+Pandas  LLM+SQLite  LLM+Matplotlib
-                          │         │          │
-                          └─────────┴──────────┘
-                                    │
-                        Retry Logic (max 3 attempts)
-                                    │
-                                    ↓
-                                  Result
-                            Structured Response
-                            (AnalysisResponse)
+POST /ask → Analyst Service
+                  │
+                  ├─ Empty CSV? → 400 Bad Request
+                  │
+                  ↓
+            RAG Service (FAISS)
+        retrieves business context
+                  │
+                  ↓
+            Planner Agent
+        (LLM decides routing)
+                  │
+        ┌─────────┼──────────┬─────────────┐
+        ↓         ↓          ↓             ↓
+   Python Agent  SQL Agent  Chart Agent  Out of Scope
+   LLM+Pandas  LLM+SQLite  LLM+Matplotlib  → clear message
+        │         │          │
+        └─────────┴──────────┘
+     Retry Logic (max 3 attempts per agent)
+                  │
+                  ↓
+          AnalysisResponse
+     (result, status, attempts,
+      agents_used, chart_path, ...)
 ```
