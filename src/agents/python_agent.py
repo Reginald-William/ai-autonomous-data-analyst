@@ -2,7 +2,7 @@ import logging
 import pandas as pd
 import sys
 from io import StringIO
-from src.services.llm_service import get_llm_client, MODEL_NAME
+from src.services.llm_service import get_llm_client, get_model_for_complexity, DEFAULT_MODEL
 from src.services.rag_service import retrieve_context
 from fastapi import HTTPException
 import time
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class PythonAgent:
     def __init__(self):
         self.client = get_llm_client()
-        self.model = MODEL_NAME
+        self.model = DEFAULT_MODEL
         self.max_attempts = 3
 
     def clean_code(self, code: str) -> str:
@@ -76,6 +76,8 @@ class PythonAgent:
         The dataframe is already loaded as 'df'.
         Return only the Python code, nothing else.
         Be precise about statistical operations: use .mean() for average, .sum() for total, .median() for median, .std() for standard deviation.
+        When grouping by month always use pd.Grouper(key='date', freq='ME') — never use freq='M' as it is deprecated in pandas >= 2.2.
+        Always convert date columns with pd.to_datetime() before any date-based grouping.
         """
 
         try:
@@ -147,8 +149,9 @@ class PythonAgent:
             logger.error(f"Groq API call failed: {str(e)}")
             raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
 
-    def run(self, question: str, file_path: str) -> tuple[str, int]:
-        logger.info(f"Python agent running for question: {question}")
+    def run(self, question: str, file_path: str, complexity: str = "medium") -> tuple[str, int, str]:
+        self.model = get_model_for_complexity(complexity)
+        logger.info(f"Python agent running for question: {question} | complexity={complexity} | model={self.model}")
 
         rag_context = retrieve_context(question)
         generated_code = self.clean_code(self.generate_code(question, file_path, rag_context))
@@ -160,7 +163,7 @@ class PythonAgent:
                 logger.info(f"Execution attempt {attempt} of {self.max_attempts}")
                 result = self.execute_code(generated_code, file_path)
                 logger.info("Execution successful")
-                return result, attempt
+                return result, attempt, self.model
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt} failed: {str(e)}")

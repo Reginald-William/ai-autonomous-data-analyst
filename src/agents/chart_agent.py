@@ -4,14 +4,14 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
-from src.services.llm_service import get_llm_client, MODEL_NAME
+from src.services.llm_service import get_llm_client, get_model_for_complexity
 
 logger = logging.getLogger(__name__)
 
 class ChartAgent:
     def __init__(self):
         self.client = get_llm_client()
-        self.model = MODEL_NAME
+        self.model = get_model_for_complexity("medium")
         self.charts_dir = "data/charts"
         os.makedirs(self.charts_dir, exist_ok=True)
 
@@ -55,8 +55,9 @@ class ChartAgent:
     def clean_code(self, code: str) -> str:
         return code.replace("```python", "").replace("```", "").strip()
 
-    def run(self, question: str, data: str, file_path: str) -> str:
-        logger.info(f"Chart agent running for question: {question}")
+    def run(self, question: str, data: str, file_path: str, complexity: str = "medium") -> str:
+        self.model = get_model_for_complexity(complexity)
+        logger.info(f"Chart agent running for question: {question} | complexity={complexity} | model={self.model}")
 
         chart_code = self.clean_code(self.generate_chart_code(question, data, file_path))
 

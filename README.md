@@ -17,7 +17,7 @@ An AI-powered autonomous data analyst that accepts CSV data, understands its str
 - Python
 - FastAPI
 - Groq (LLM provider)
-- Llama 3.3 70B Versatile (AI model)
+- Llama 3.1 8B Instant / Llama 3.3 70B Versatile / Llama 4 Scout 17B (dynamic model routing)
 - Pandas
 - FAISS
 - Sentence Transformers
@@ -31,8 +31,8 @@ An AI-powered autonomous data analyst that accepts CSV data, understands its str
 - V3 — RAG Integration ✅
 - V4 — Multi Agent Orchestration ✅
 - V4.1 — Refactoring & Testing ✅
-- V4.2 — Dynamic Model Routing (up next)
-- V5 — Deployment + Observability
+- V4.2 — Dynamic Model Routing ✅
+- V5 — Deployment + Observability (up next)
 
 ## Setup
 
@@ -108,8 +108,10 @@ POST /ask → Analyst Service
         retrieves business context
                   │
                   ↓
-            Planner Agent
-        (LLM decides routing)
+            Planner Agent (Two-Call)
+     Call 1: routing → agents + task_type
+     Call 2: complexity → low/medium/high
+      (capped at medium if row_count < 500)
                   │
         ┌─────────┼──────────┬─────────────┐
         ↓         ↓          ↓             ↓
@@ -117,10 +119,14 @@ POST /ask → Analyst Service
    LLM+Pandas  LLM+SQLite  LLM+Matplotlib  → clear message
         │         │          │
         └─────────┴──────────┘
-     Retry Logic (max 3 attempts per agent)
+  Dynamic Model per Complexity:
+  low  → llama-3.1-8b-instant
+  med  → llama-3.3-70b-versatile
+  high → llama-4-scout-17b
+  Retry Logic (max 3 attempts per agent)
                   │
                   ↓
           AnalysisResponse
      (result, status, attempts,
-      agents_used, chart_path, ...)
+      model_used, agents_used, chart_path, ...)
 ```
