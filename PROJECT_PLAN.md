@@ -10,7 +10,7 @@ Build an autonomous AI Data Analyst system that:
 - Evolves into multi-agent architecture
 
 ## Current Status
-V4 — Completed | V4.1 Refactoring & Testing — Completed ✅ | V4.2 — Up Next
+V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — Up Next
 
 ## Milestones
 
@@ -65,11 +65,15 @@ V4 — Completed | V4.1 Refactoring & Testing — Completed ✅ | V4.2 — Up Ne
 - [x] Test RAG with questions that have no relevant context
 - [x] Add routing_rules.txt to docs for RAG
 
-### V4.2 — Dynamic Model Routing
-- [ ] Extend PlannerAgent to output complexity level (low/medium/high) alongside task_type
-- [ ] Add ModelRouter that maps complexity to model (low → llama-3.1-8b-instant, medium → llama-3.3-70b-versatile, high → qwen/qwen3-32b)
-- [ ] Pass selected model dynamically to each agent instead of using global MODEL_NAME constant
-- [ ] Test cost vs quality tradeoff across all complexity levels
+### V4.2 — Dynamic Model Routing ✅
+- [x] Two-call PlannerAgent: Call 1 routing (llama-3.3-70b-versatile), Call 2 complexity classifier (llama-3.1-8b-instant)
+- [x] MODEL_ROUTING dict + get_model_for_complexity() in llm_service.py
+- [x] All agents accept complexity param and return (result, attempts, model) tuple
+- [x] High complexity capped at medium for datasets under 500 rows
+- [x] Complexity rules added to docs/routing_rules.txt (RAG-retrieved)
+- [x] Pandas freq='ME' fix in python agent prompt
+- [x] Large test dataset added (tests/data/large_sales.csv, 1000 rows)
+- [x] All 9 test scenarios passing — documented in tests/TEST_RESULTS.md
 
 ### V5 — Deployment + Observability
 - [ ] Docker containerization
@@ -96,7 +100,7 @@ V4 — Completed | V4.1 Refactoring & Testing — Completed ✅ | V4.2 — Up Ne
 - Python
 - FastAPI
 - Groq (LLM provider)
-- Llama 3.3 70B Versatile (upgraded from 3.1 8B for better code generation accuracy)
+- Llama 3.1 8B Instant / Llama 3.3 70B Versatile / Llama 4 Scout 17B (dynamic model routing)
 - Pandas
 - FAISS
 - Sentence Transformers

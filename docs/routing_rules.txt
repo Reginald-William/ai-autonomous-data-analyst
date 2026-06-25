@@ -49,3 +49,7 @@ Complexity Levels:
 - high: requires combining two or more separate computations, reasoning about change over time, or drawing a conclusion that spans the whole dataset
   - The answer requires multiple steps before a final conclusion can be reached
   - Examples: "Which region is growing fastest?", "How has revenue changed over time?", "Is there a correlation between product and region performance?", "Compare trends across regions and identify the best performer"
+
+Python Coding Rules (always apply when generating pandas code):
+- When grouping by month use pd.Grouper(key='date', freq='ME') — 'M' is deprecated in pandas >= 2.2, always use 'ME' (Month End)
+- Always convert date column with pd.to_datetime() before any date-based grouping

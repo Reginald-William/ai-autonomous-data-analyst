@@ -76,6 +76,8 @@ class PythonAgent:
         The dataframe is already loaded as 'df'.
         Return only the Python code, nothing else.
         Be precise about statistical operations: use .mean() for average, .sum() for total, .median() for median, .std() for standard deviation.
+        When grouping by month always use pd.Grouper(key='date', freq='ME') — never use freq='M' as it is deprecated in pandas >= 2.2.
+        Always convert date columns with pd.to_datetime() before any date-based grouping.
         """
 
         try:
