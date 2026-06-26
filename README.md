@@ -32,7 +32,8 @@ An AI-powered autonomous data analyst that accepts CSV data, understands its str
 - V4 — Multi Agent Orchestration ✅
 - V4.1 — Refactoring & Testing ✅
 - V4.2 — Dynamic Model Routing ✅
-- V5 — Deployment + Observability (up next)
+- V5 — File Upload & Session Management ✅
+- V5.1 — Auth (up next)
 
 ## Setup
 
@@ -66,18 +67,35 @@ Welcome message
 ### GET /health
 Health check endpoint
 
-### POST /ask
-Ask a business question about your CSV data
+### POST /upload
+Upload a CSV file and ask a question. Returns a `session_id` for follow-up questions.
 
-Request body:
-```json
-{
-    "question": "what is total revenue by region?",
-    "file_path": "sample_data.csv"
-}
+**First request (upload file):**
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "question=What is total revenue by region?" \
+  -F "file=@sample_data.csv"
 ```
 
-Response:
+**Follow-up request (reuse session, no re-upload needed):**
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "question=Show me a bar chart of that" \
+  -F "session_id=<session_id_from_response>"
+```
+
+Sessions expire after 30 minutes of inactivity.
+
+### POST /ask
+Ask a question using a local file path. Kept for development and local testing.
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "what is total revenue by region?", "file_path": "sample_data.csv"}'
+```
+
+**Response (both endpoints):**
 ```json
 {
     "question": "what is total revenue by region?",
@@ -93,40 +111,56 @@ Response:
     "agents_used": ["python"],
     "task_type": "analysis",
     "reasoning": "question asks for calculation so python agent is used",
-    "chart_path": null
+    "chart_path": null,
+    "session_id": "7455452f-f6be-4770-93d9-f24186779432"
 }
 ```
 
 ## Architecture (High Level)
 ```
-POST /ask → Analyst Service
-                  │
-                  ├─ Empty CSV? → 400 Bad Request
-                  │
-                  ↓
-            RAG Service (FAISS)
-        retrieves business context
-                  │
-                  ↓
-            Planner Agent (Two-Call)
-     Call 1: routing → agents + task_type
-     Call 2: complexity → low/medium/high
-      (capped at medium if row_count < 500)
-                  │
-        ┌─────────┼──────────┬─────────────┐
-        ↓         ↓          ↓             ↓
-   Python Agent  SQL Agent  Chart Agent  Out of Scope
-   LLM+Pandas  LLM+SQLite  LLM+Matplotlib  → clear message
-        │         │          │
-        └─────────┴──────────┘
-  Dynamic Model per Complexity:
-  low  → llama-3.1-8b-instant
-  med  → llama-3.3-70b-versatile
-  high → llama-4-scout-17b
-  Retry Logic (max 3 attempts per agent)
-                  │
-                  ↓
-          AnalysisResponse
-     (result, status, attempts,
-      model_used, agents_used, chart_path, ...)
+POST /upload (multipart: file + question)
+  │
+  ├─ Validate file (CSV, ≤10MB, non-empty, parseable) → 400 on failure
+  ├─ Save to data/uploads/{session_id}.csv
+  ├─ Register session (30-min TTL, background cleanup every 5 min)
+  │
+POST /upload (multipart: session_id + question)  ← follow-up, no re-upload
+  │
+  └─ Lookup session → reuse saved file path
+  │
+POST /ask (JSON: file_path + question)  ← local dev/testing only
+  │
+  └─────────────────────────────────────┐
+                                        ↓
+                                 Analyst Service
+                                        │
+                                        ├─ Empty CSV? → 400 Bad Request
+                                        │
+                                        ↓
+                                  RAG Service (FAISS)
+                              retrieves business context
+                                        │
+                                        ↓
+                                Planner Agent (Two-Call)
+                         Call 1: routing → agents + task_type
+                         Call 2: complexity → low/medium/high
+                          (capped at medium if row_count < 500)
+                                        │
+                        ┌───────────────┼──────────┬─────────────┐
+                        ↓               ↓          ↓             ↓
+                   Python Agent     SQL Agent  Chart Agent  Out of Scope
+                   LLM+Pandas     LLM+SQLite  LLM+Matplotlib → clear message
+                        │               │          │
+                        └───────────────┴──────────┘
+                  Dynamic Model per Complexity:
+                  low  → llama-3.1-8b-instant
+                  med  → llama-3.3-70b-versatile
+                  high → llama-4-scout-17b
+                  Retry Logic (max 3 attempts per agent)
+                  Artifacts named with session_id (charts + DBs)
+                                        │
+                                        ↓
+                                 AnalysisResponse
+                          (result, status, attempts, model_used,
+                           agents_used, chart_path, session_id, ...)
 ```

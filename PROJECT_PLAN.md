@@ -10,7 +10,7 @@ Build an autonomous AI Data Analyst system that:
 - Evolves into multi-agent architecture
 
 ## Current Status
-V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — Up Next
+V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — In Progress 🔄
 
 ## Milestones
 
@@ -76,13 +76,34 @@ V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — 
 - [x] All 9 test scenarios passing — documented in tests/TEST_RESULTS.md
 
 ### V5 — Deployment + Observability
+
+#### V5 — File Upload & Session Management (branch: claude/v5-file-upload) ✅
+- [x] `POST /upload` endpoint with multipart/form-data support
+- [x] File validation (CSV only, 10MB max, non-empty, parseable)
+- [x] Session-based file retention — upload once, ask many questions
+- [x] Session TTL (30 min inactivity) with background cleanup task
+- [x] UUID chart filenames — fixed hardcoded `chart.png` collision
+- [x] UUID-prefixed DB filenames — fixed SQLite collision
+- [x] `session_id` returned in all responses
+- [x] Backward compat — `/ask` with `file_path` still works
+- [x] 15/15 tests passing
+
+#### V5.1 — Auth (branch: claude/v5.1-auth)
+- [ ] User accounts
+- [ ] JWT authentication
+- [ ] Usage tracking per user
+
+#### V5.2 — Rate Limiting (branch: claude/v5.2-rate-limiting)
+- [ ] Per-user rate limiting (protect Groq API quota)
+- [ ] Free/pro tier enforcement
+
+#### V5.3 — Frontend (branch: claude/v5.3-frontend)
+- [ ] Streamlit UI (file upload, question input, result display, chart rendering)
+
+#### V5.4 — Docker & Deployment (branch: claude/v5.4-docker)
 - [ ] Docker containerization
 - [ ] AWS/GCP deployment
-- [ ] Monitoring
-- [ ] Logging pipeline
-- [ ] Authentication
-- [ ] File upload endpoint (replace file_path with multipart/form-data)
-- [ ] Per-user rate limiting (protect Groq API quota)
+- [ ] Monitoring + logging pipeline
 - [ ] HTTPS
 
 ### V5.1 — Frontend + Monetization

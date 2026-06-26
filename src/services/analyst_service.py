@@ -2,6 +2,7 @@ import logging
 import time
 import pandas as pd
 from datetime import datetime
+from uuid import uuid4
 from fastapi import HTTPException
 from src.services.llm_service import DEFAULT_MODEL
 from src.agents.planner_agent import PlannerAgent
@@ -18,14 +19,17 @@ python_agent = PythonAgent()
 sql_agent = SQLAgent()
 chart_agent = ChartAgent()
 
-def analyse(question: str, file_path: str) -> AnalysisResponse:
+def analyse(question: str, file_path: str, session_id: str = None, original_filename: str = None) -> AnalysisResponse:
+    if session_id is None:
+        session_id = str(uuid4())  # auto-generate for /ask backward compat
     start_time = time.time()
 
     try:
         df = pd.read_csv(file_path)
         row_count = len(df)
         column_count = len(df.columns)
-        file_name = file_path.split("/")[-1]
+        # Use original filename for display if provided (e.g. from upload), else extract from path
+        file_name = original_filename if original_filename else file_path.split("/")[-1]
         logger.info(f"CSV loaded: {row_count} rows, {column_count} columns | File: {file_name}")
 
         if row_count == 0:
@@ -62,7 +66,8 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
             agents_used=[],
             task_type=task_type,
             reasoning=reasoning,
-            chart_path=None
+            chart_path=None,
+            session_id=session_id
         )
 
     result = None
@@ -79,12 +84,12 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
 
         elif "sql" in agents:
             logger.info("Routing to SQL agent")
-            result, attempts, model_used = sql_agent.run(question, file_path, complexity)
+            result, attempts, model_used = sql_agent.run(question, file_path, complexity, session_id=session_id, original_filename=original_filename)
             agents_used.append("sql")
 
         if "chart" in agents and result is not None:
             logger.info("Routing to Chart agent")
-            chart_path = chart_agent.run(question, result, file_path, complexity)
+            chart_path = chart_agent.run(question, result, file_path, complexity, session_id=session_id)
             agents_used.append("chart")
 
     except Exception as e:
@@ -104,7 +109,8 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
             agents_used=agents_used,
             task_type=task_type,
             reasoning=reasoning,
-            chart_path=chart_path
+            chart_path=chart_path,
+            session_id=session_id
         )
 
     time_taken = f"{round(time.time() - start_time, 2)}s"
@@ -124,5 +130,6 @@ def analyse(question: str, file_path: str) -> AnalysisResponse:
         agents_used=agents_used,
         task_type=task_type,
         reasoning=reasoning,
-        chart_path=chart_path
+        chart_path=chart_path,
+        session_id=session_id
     )

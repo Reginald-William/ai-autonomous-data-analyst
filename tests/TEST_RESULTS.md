@@ -4,6 +4,42 @@ Manual test results for each version. All tests run against the live API (`POST 
 
 ---
 
+## V5 — File Upload & Session Management
+
+**Date:** 2026-06-26
+**Branch:** `claude/v5-file-upload`
+**Goal:** Verify `/upload` endpoint, file validation, session-based follow-ups, artifact collision fixes, and backward compat.
+
+| # | Scenario | Method | Expected | Status | Notes |
+|---|----------|--------|----------|--------|-------|
+| 1 | First upload, simple question | `POST /upload` + `file=@sample_data.csv` | 200, answer, `session_id` in response | ✅ Pass | `file_name` shows `sample_data.csv` not UUID |
+| 2 | Follow-up question using `session_id` | `POST /upload` + `session_id`, no file | 200, same `session_id` returned | ✅ Pass | File reused from session, no re-upload needed |
+| 3 | Chart question via upload | `POST /upload` + chart question | 200, `chart_path` has UUID filename | ✅ Pass | `data/charts/{uuid}.png` not `chart.png` |
+| 4 | SQL routing via upload | Covered in Test 2 | `agents_used: ["sql"]` | ✅ Pass | |
+| 5 | Non-CSV file upload | Upload `README.md` | 400: "Only CSV files are supported" | ✅ Pass | |
+| 6 | Empty CSV upload | Upload `tests/data/empty.csv` | 400: "no data rows" | ✅ Pass | Caught by analyst_service empty guard |
+| 7 | Corrupt binary with `.csv` extension | Upload PNG bytes as `.csv` | 400: "File is not a valid CSV" | ✅ Pass | |
+| 8 | Invalid `session_id` | Send fake UUID as `session_id` | 404: "Session not found or expired" | ✅ Pass | |
+| 9 | No file, no `session_id` | Question only | 400: "No file uploaded" | ✅ Pass | |
+| 10 | Both `session_id` + file sent | Send both | Session takes priority, file ignored | ✅ Pass | |
+| 11 | `/ask` backward compat | `POST /ask` JSON with `file_path` | 200, works as before | ✅ Pass | |
+| 12 | `/ask` returns `session_id` | Same as Test 11 | `session_id` auto-generated in response | ✅ Pass | |
+| 13 | Chart filename is UUID | Check `data/charts/` after Test 3 | `{uuid}.png` not `chart.png` | ✅ Pass | |
+| 14 | DB filename has session prefix | Check `data/` after SQL routing | `{session_id}_sample_data.db` | ✅ Pass | Fixed mid-test: was doubling UUID as table name |
+| 15 | Uploaded files persist during session | Check `data/uploads/` after requests | Files present while sessions active | ✅ Pass | |
+| 16 | TTL cleanup deletes files after expiry | Set TTL=0, sleep=5s, upload file, wait 10s | File deleted from `data/uploads/` | ✅ Pass | Tested with temporary TTL override |
+| 17 | Startup orphan sweep clears leftover files | Restart server, check logs + directories | All files in uploads + charts deleted on startup | ✅ Pass | Logs: `Startup cleanup: removed X orphaned file(s)` |
+
+**Result: 17/17 passing**
+
+### Key Decisions Made During Testing
+
+- **DB filename doubling bug:** `database_service` was deriving the table name from the UUID-named upload path, producing `{uuid}_{uuid}.db`. Fixed by passing `original_filename` through the route → `analyse()` → `sql_agent` → `database_service`, so the table name comes from the real filename (`sample_data`).
+- **`file_name` in response showed UUID:** Same root cause — `analyst_service` was extracting filename from the saved path. Fixed by accepting `original_filename` param and using it for display.
+- **Table name sanitization added:** Hyphens in UUIDs are invalid SQLite identifiers. Added `.replace("-", "_")` in `database_service` as a safety measure for edge cases.
+
+---
+
 ## V4.2 — Dynamic Model Routing
 
 **Date:** 2026-06-25

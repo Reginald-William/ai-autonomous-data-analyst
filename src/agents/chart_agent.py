@@ -1,5 +1,6 @@
 import logging
 import os
+from uuid import uuid4
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -15,7 +16,7 @@ class ChartAgent:
         self.charts_dir = "data/charts"
         os.makedirs(self.charts_dir, exist_ok=True)
 
-    def generate_chart_code(self, question: str, data: str, file_path: str) -> str:
+    def generate_chart_code(self, question: str, data: str, file_path: str, chart_path: str) -> str:
         df = pd.read_csv(file_path)
         csv_context = f"Columns: {list(df.columns)}\n"
         csv_context += f"Sample rows:\n{df.head(3).to_string()}"
@@ -35,7 +36,7 @@ class ChartAgent:
         Always label the x and y axes clearly.
         Always add value labels on top of each bar if it is a bar chart.
         Always use tight_layout() before saving.
-        Save the chart to f"{self.charts_dir}/chart.png" using plt.savefig(f"{self.charts_dir}/chart.png").
+        Save the chart to "{chart_path}" using plt.savefig("{chart_path}").
         Do not use plt.show().
         Return only the Python code, nothing else.
         Always write actual Python code, never answer directly.
@@ -55,17 +56,20 @@ class ChartAgent:
     def clean_code(self, code: str) -> str:
         return code.replace("```python", "").replace("```", "").strip()
 
-    def run(self, question: str, data: str, file_path: str, complexity: str = "medium") -> str:
+    def run(self, question: str, data: str, file_path: str, complexity: str = "medium", session_id: str = None) -> str:
         self.model = get_model_for_complexity(complexity)
         logger.info(f"Chart agent running for question: {question} | complexity={complexity} | model={self.model}")
 
-        chart_code = self.clean_code(self.generate_chart_code(question, data, file_path))
+        # Use session_id for the filename so concurrent requests don't overwrite each other
+        chart_id = session_id if session_id else str(uuid4())
+        chart_path = f"{self.charts_dir}/{chart_id}.png"
+
+        chart_code = self.clean_code(self.generate_chart_code(question, data, file_path, chart_path))
 
         try:
             df = pd.read_csv(file_path)
             safe_environment = {"df": df, "plt": plt}
             exec(chart_code, safe_environment)
-            chart_path = f"{self.charts_dir}/chart.png"
             logger.info(f"Chart saved to {chart_path}")
             return chart_path
 
