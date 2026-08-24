@@ -1,7 +1,7 @@
 import logging
 import sqlite3
 from tabulate import tabulate
-from src.services.llm_service import get_llm_client, get_model_for_complexity, DEFAULT_MODEL
+from src.services.llm_service import get_llm_client, get_model_for_complexity, get_retry_budget, DEFAULT_MODEL
 from src.services.database_service import load_csv_to_sqlite
 from src.services.rag_service import retrieve_context
 
@@ -104,7 +104,8 @@ class SQLAgent:
     
     def run(self, question: str, file_path: str, complexity: str = "medium", session_id: str = None, original_filename: str = None) -> tuple[str, int, str]:
         self.model = get_model_for_complexity(complexity)
-        logger.info(f"SQL agent running for question: {question} | complexity={complexity} | model={self.model}")
+        self.max_attempts = get_retry_budget(complexity)
+        logger.info(f"SQL agent running for question: {question} | complexity={complexity} | model={self.model} | max_attempts={self.max_attempts}")
 
         db_info = load_csv_to_sqlite(file_path, session_id=session_id, original_filename=original_filename)
         rag_context = retrieve_context(question)

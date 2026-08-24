@@ -9,7 +9,7 @@ class PlannerAgent:
     def __init__(self):
         self.client = get_llm_client()
         self.model = DEFAULT_MODEL
-        self.complexity_model = MODEL_ROUTING["low"]  # llama-3.1-8b-instant — fast, cheap, focused
+        self.complexity_model = MODEL_ROUTING["low"]  # gpt-oss-20b — fast, cheap, focused
 
     # Minimum rows required to justify the high complexity model
     HIGH_COMPLEXITY_ROW_THRESHOLD = 500
