@@ -16,3 +16,4 @@ class AnalysisResponse(BaseModel):
     task_type: str = ""
     reasoning: str = ""
     chart_path: Optional[str] = None
+    session_id: Optional[str] = None

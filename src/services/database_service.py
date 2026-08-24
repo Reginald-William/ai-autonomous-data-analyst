@@ -5,14 +5,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def load_csv_to_sqlite(file_path: str) -> dict:
+def load_csv_to_sqlite(file_path: str, session_id: str = None, original_filename: str = None) -> dict:
     try:
-        # Derive table name from filename
-        file_name = os.path.basename(file_path)
-        table_name = os.path.splitext(file_name)[0]
-        
-        # Define database path
-        db_path = f"data/{table_name}.db"
+        # Derive table name from the original filename if provided, otherwise from the file path
+        source_name = original_filename if original_filename else os.path.basename(file_path)
+        table_name = os.path.splitext(source_name)[0]
+        # Sanitize table name to be a valid SQLite identifier
+        table_name = table_name.replace("-", "_").replace(" ", "_")
+
+        # Prefix with session_id to prevent collision when multiple users upload same filename
+        if session_id:
+            db_path = f"data/{session_id}_{table_name}.db"
+        else:
+            db_path = f"data/{table_name}.db"
         
         # Load CSV into dataframe
         df = pd.read_csv(file_path)

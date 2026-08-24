@@ -102,11 +102,11 @@ class SQLAgent:
     def clean_sql(self, sql: str) -> str:
       return sql.replace("```sql", "").replace("```", "").strip()
     
-    def run(self, question: str, file_path: str, complexity: str = "medium") -> tuple[str, int, str]:
+    def run(self, question: str, file_path: str, complexity: str = "medium", session_id: str = None, original_filename: str = None) -> tuple[str, int, str]:
         self.model = get_model_for_complexity(complexity)
         logger.info(f"SQL agent running for question: {question} | complexity={complexity} | model={self.model}")
 
-        db_info = load_csv_to_sqlite(file_path)
+        db_info = load_csv_to_sqlite(file_path, session_id=session_id, original_filename=original_filename)
         rag_context = retrieve_context(question)
 
         sql = self.generate_sql(question, db_info, rag_context)

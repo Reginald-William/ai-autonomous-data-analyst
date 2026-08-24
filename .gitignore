@@ -18,3 +18,7 @@ data/*.db
 data/charts/*
 # But keep the .gitkeep file to preserve the empty charts directory
 !data/charts/.gitkeep
+
+# Uploaded files — generated from user file uploads
+data/uploads/*
+!data/uploads/.gitkeep
