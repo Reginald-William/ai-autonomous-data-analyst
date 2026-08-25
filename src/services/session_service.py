@@ -13,8 +13,20 @@ _lock = threading.Lock()  # prevents race conditions when multiple requests hit 
 SESSION_TTL_MINUTES = 30
 
 
+def _safe_remove(path: str) -> bool:
+    """Delete a file, tolerating Windows file locks instead of crashing the
+    caller. A file still locked by another process is left for the next
+    cleanup cycle to retry. Returns True if the file was actually deleted."""
+    try:
+        os.remove(path)
+        return True
+    except (PermissionError, OSError) as e:
+        logger.warning(f"Could not delete {path} (will retry later): {e}")
+        return False
+
+
 def cleanup_orphaned_files() -> None:
-    """Delete all files in uploads and charts directories on startup.
+    """Delete all files in uploads, charts, and generated DB files on startup.
     These are orphans — server restarted and session memory was wiped, so
     there is no session that will ever clean them up."""
     dirs = ["data/uploads", "data/charts"]
@@ -23,8 +35,16 @@ def cleanup_orphaned_files() -> None:
         for f in glob.glob(f"{directory}/*"):
             if os.path.basename(f) == ".gitkeep":
                 continue
-            os.remove(f)
+            if _safe_remove(f):
+                total += 1
+
+    # Session-scoped SQLite databases (data/{session_id}_{table_name}.db) are
+    # generated the same way — with no session left in memory, nothing else
+    # will ever clean them up.
+    for db_file in glob.glob("data/*.db"):
+        if _safe_remove(db_file):
             total += 1
+
     if total:
         logger.info(f"Startup cleanup: removed {total} orphaned file(s)")
 
@@ -80,10 +100,10 @@ def _delete_session_files(session_id: str, session: dict) -> None:
     # Delete uploaded CSV
     file_path = session.get("file_path", "")
     if file_path and os.path.exists(file_path):
-        os.remove(file_path)
-        logger.info(f"Deleted session file: {file_path}")
+        if _safe_remove(file_path):
+            logger.info(f"Deleted session file: {file_path}")
 
     # Delete any generated DB files for this session (pattern: data/{session_id}_*.db)
     for db_file in glob.glob(f"data/{session_id}_*.db"):
-        os.remove(db_file)
-        logger.info(f"Deleted session DB: {db_file}")
+        if _safe_remove(db_file):
+            logger.info(f"Deleted session DB: {db_file}")
