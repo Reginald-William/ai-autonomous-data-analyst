@@ -1,18 +1,24 @@
-# Project Plan — Autonomous Data Analyst AI Agent
+# Project Plan — Autonomous Data Analyst
 
 ## Project Vision
-Build an autonomous AI Data Analyst system that:
-- Accepts structured data
-- Understands schema
-- Answers analytical questions
-- Generates insights
-- Produces visualizations
-- Evolves into multi-agent architecture
+
+A data platform with an AI agent as its serving layer. A public dataset is ingested on a
+schedule, landed in raw storage, modeled through dbt into a warehouse, and checked for data
+quality — and the multi-agent system in this repo (hand-rolled planner, complexity-based
+routing, retry logic) answers natural-language questions against it, alongside its original
+CSV-upload mode.
 
 ## Current Status
-V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — In Progress 🔄
 
-## Milestones
+The multi-agent serving layer (V1 through V5 below) is complete. **Phase 1 of the data
+platform build is in progress.**
+
+The full 13-phase plan, current status, locked architectural decisions, risk register, and
+cost limits live in **[`PHASES.md`](PHASES.md)** — that file is the source of truth going
+forward. This document stays as the project's vision and history; it does not duplicate the
+phase table, to avoid the two documents drifting out of sync with each other.
+
+## History — the multi-agent serving layer
 
 ### V1 — LLM + FastAPI (Weeks 1-2) ✅
 - [x] Project structure setup
@@ -52,7 +58,7 @@ V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — 
 - [x] Structured response with agent metadata
 - [x] RAG assisted planner routing rules
 
-### V4.1 — Refactoring & Testing
+### V4.1 — Refactoring & Testing ✅
 - [x] Move ask_llm and fix_code into PythonAgent
 - [x] Move execute_code and clean_code into PythonAgent
 - [x] Keep llm_service.py for shared client and model only
@@ -66,18 +72,16 @@ V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — 
 - [x] Add routing_rules.txt to docs for RAG
 
 ### V4.2 — Dynamic Model Routing ✅
-- [x] Two-call PlannerAgent: Call 1 routing (llama-3.3-70b-versatile), Call 2 complexity classifier (llama-3.1-8b-instant)
+- [x] Two-call PlannerAgent: Call 1 routing, Call 2 complexity classifier
 - [x] MODEL_ROUTING dict + get_model_for_complexity() in llm_service.py
 - [x] All agents accept complexity param and return (result, attempts, model) tuple
 - [x] High complexity capped at medium for datasets under 500 rows
 - [x] Complexity rules added to docs/routing_rules.txt (RAG-retrieved)
 - [x] Pandas freq='ME' fix in python agent prompt
 - [x] Large test dataset added (tests/data/large_sales.csv, 1000 rows)
-- [x] All 9 test scenarios passing — documented in tests/TEST_RESULTS.md
+- [x] All 9 test scenarios passing at the time — documented in `tests/TEST_RESULTS.md`
 
-### V5 — Deployment + Observability
-
-#### V5 — File Upload & Session Management (branch: claude/v5-file-upload) ✅
+### V5 — File Upload & Session Management ✅
 - [x] `POST /upload` endpoint with multipart/form-data support
 - [x] File validation (CSV only, 10MB max, non-empty, parseable)
 - [x] Session-based file retention — upload once, ask many questions
@@ -86,47 +90,27 @@ V4 — Completed ✅ | V4.1 — Completed ✅ | V4.2 — Completed ✅ | V5 — 
 - [x] UUID-prefixed DB filenames — fixed SQLite collision
 - [x] `session_id` returned in all responses
 - [x] Backward compat — `/ask` with `file_path` still works
-- [x] 15/15 tests passing
+- [x] 17/17 manually-run test scenarios passing at the time (documented in
+      `tests/TEST_RESULTS.md`)
 
-#### V5.1 — Auth (branch: claude/v5.1-auth)
-- [ ] User accounts
-- [ ] JWT authentication
-- [ ] Usage tracking per user
+## What comes next
 
-#### V5.2 — Rate Limiting (branch: claude/v5.2-rate-limiting)
-- [ ] Per-user rate limiting (protect Groq API quota)
-- [ ] Free/pro tier enforcement
+See [`PHASES.md`](PHASES.md) for the full 13-phase plan: resurrecting and testing the existing
+system (Phase 1, in progress), a config/DI refactor and CI (Phases 2-3), replacing the
+hardcoded RAG context (Phase 4), Docker + Cloud Run deployment (Phase 5), then the platform
+work itself — ingestion, dbt, BigQuery, Airflow, data quality (Phases 6-10) — followed by a
+LangGraph comparison, a Streamlit demo, and final polish (Phases 11-13).
 
-#### V5.3 — Frontend (branch: claude/v5.3-frontend)
-- [ ] Streamlit UI (file upload, question input, result display, chart rendering)
+## Out of scope
 
-#### V5.4 — Docker & Deployment (branch: claude/v5.4-docker)
-- [ ] Docker containerization
-- [ ] AWS/GCP deployment
-- [ ] Monitoring + logging pipeline
-- [ ] HTTPS
-
-### V5.1 — Frontend + Monetization
-- [ ] Simple frontend (Streamlit or Next.js) for non-technical users
-- [ ] Usage tracking per user (enforce free/pro tiers)
-- [ ] SaaS subscription tiers (free: limited questions/month, pro: $19-49/mo unlimited)
-- [ ] API key access for developers (per 1000 questions billing)
-
-### Future Considerations
-- Multi-file and multi-database support (PostgreSQL, MySQL)
-- Conversation memory (follow-up questions within a session)
-- White-label offering for companies embedding in internal tools
+No SaaS subscription tiers, no per-user usage tracking or billing, no API key access for
+developers, no white-label offering. A minimal Streamlit demo UI is planned (Phase 12) — no
+auth, no tiers — purely so the project is demoable in an interview.
 
 ## Tech Stack
-- Python
-- FastAPI
-- Groq (LLM provider)
-- Llama 3.1 8B Instant / Llama 3.3 70B Versatile / Llama 4 Scout 17B (dynamic model routing)
-- Pandas
-- FAISS
-- Sentence Transformers
-- SQLite
-- Matplotlib
-- Tabulate
-- Docker (coming in V5)
-- PostgreSQL (coming in V5)
+
+Current (serving layer): Python, FastAPI, Groq (`openai/gpt-oss-20b` / `openai/gpt-oss-120b`),
+Pandas, FAISS, Sentence Transformers, SQLite, Matplotlib, Tabulate, pytest.
+
+Planned (data platform, see `PHASES.md`): Docker, dbt, BigQuery, Airflow, Great Expectations,
+GCS/Parquet, LangGraph, Streamlit.

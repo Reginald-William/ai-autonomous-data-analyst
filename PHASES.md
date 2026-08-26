@@ -300,29 +300,23 @@ Alternatives: ONNX embeddings (~90 MB), or precompute the index at build time.
 
 **Branch:** `claude/v8-ingestion` · **1 weekend**
 
-### Source: NYC TLC Trip Record Data
+### Source: not yet finalized
 
-Public Parquet on CloudFront, **no API key, no credit card**, stable since 2009, monthly
-date-partitioned files.
+NYC TLC Trip Record Data was proposed as the leading candidate during initial planning, but
+the owner wants to revisit the choice when this phase actually starts and pick something that
+also suits their own interest — not decide it purely on paper criteria. **Confirm the source
+with the owner before writing any ingestion code.** See the reference memory on this topic for
+the reasoning behind NYC TLC and the other candidates considered (GH Archive, Open-Meteo,
+Alpha Vantage/FRED/World Bank, GBFS).
 
-**Why it wins:** the messiness is real and *famous* — negative fares, zero-passenger trips,
-dropoff timestamps before pickup, 265 zone codes with genuine referential gaps, documented
-schema drift across years. The Phase 10 data-quality layer gets real work, not synthetic nulls.
-It's also the canonical DE interview dataset, so interviewers know its quirks and can go deep.
-The dimensional model is obvious but non-trivial.
+Whatever gets chosen, the same volume-control reasoning applies: BigQuery's free tier is 10 GB
+storage / 1 TB queried per month, so ingest incrementally (one month/period at a time) rather
+than bulk-loading history — both to stay in budget and because incremental ingestion is itself
+part of what Phase 9's orchestration needs to demonstrate.
 
-Runner-up: GH Archive (good messiness, but nesting is more parsing than modeling). Rejected:
-Open-Meteo (too clean), Alpha Vantage/FRED/World Bank (API keys, low volume), GBFS (live
-snapshot, hard to backfill).
-
-**Volume control — matters for cost.** One month of yellow-taxi data is ~3M rows / ~50 MB
-Parquet. **Ingest one month at a time**, starting with a single 2024 month. Twelve months
-≈ 600 MB, comfortably inside BigQuery's 10 GB free storage. All years would be ~40 GB and
-**would breach it**.
-
-**Added:** `ingestion/` — `sources/nyc_tlc.py`, `storage.py`, `cli.py`
-(`python -m ingestion --source nyc_tlc --month 2024-01`), `tests/unit/test_ingestion.py` (~10,
-mocked HTTP — never hits the network).
+**Added:** `ingestion/` — a per-source module under `sources/`, `storage.py`, `cli.py`
+(`python -m ingestion --source <name> --month 2024-01`), `tests/unit/test_ingestion.py` (~10,
+mocked HTTP — never hits the network). Exact filenames depend on the source chosen.
 
 **Done when:** the CLI ingests one month to partitioned local Parquet, idempotently, with a
 row-count assertion.
