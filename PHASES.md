@@ -489,7 +489,7 @@ Strong addition if time allows.
 | 5 | BigQuery cost blowout — LLM `SELECT *` with no `maximum_bytes_billed` | High | 7, 8 |
 | 6 | Docker image ~3.5 GB from torch/faiss for a 3 KB corpus | High | 5 |
 | 7 | RAG hardcoded to TechMart — other datasets rejected out-of-scope | High | 4 |
-| 8 | Import-time singletons block clean testing | High | 2 |
+| 8 | Import-time singletons block clean testing — confirmed 2026-08-26: `tests/unit/test_cleaners.py` took 35s (vs <1s for every other Phase 1c file) because instantiating any agent imports `rag_service`, which loads a real SentenceTransformer at import | High | 2 |
 | 9 | Groq 8K TPM ceiling vs 131k-context models; needs backoff | Medium | 1, 4 |
 | 10 | Airflow on Windows needs WSL2; Composer has no free tier | Medium | 9 |
 | 11 | `sys.stdout` reassignment corrupts pytest capture | Medium | 3 |
@@ -502,6 +502,7 @@ Strong addition if time allows.
 | 18 | `HTTPException` raised from the service layer — HTTP coupling in domain code | Low | 2 |
 | 19 | Global exception handler logs without `exc_info` — opaque failures | Low | 1 |
 | 20 | `TEST_RESULTS.md` documents 31 unreproducible results | Low | 3 |
+| 21 | `clean_code` is duplicated verbatim in `python_agent.py` and `chart_agent.py`, plus a near-identical `clean_sql` in `sql_agent.py` — found while writing `test_cleaners.py` (2026-08-26). Candidate for a shared helper, not urgent | Low | 2 |
 
 ## Cost summary — free tiers only
 
