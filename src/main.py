@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -46,6 +47,16 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# Clean 400 for malformed requests (e.g. a string sent where a file is expected)
+# instead of FastAPI's default verbose 422 with internal Pydantic error details.
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(f"Request validation failed: {exc.errors()}")
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Invalid request. Please check the fields you submitted."}
+    )
 
 # Global exception handler (safety net for any unhandled exceptions)
 @app.exception_handler(Exception)

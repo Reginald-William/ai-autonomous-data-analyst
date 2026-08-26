@@ -1,39 +1,41 @@
-# Autonomous Data Analyst AI Agent
+# Autonomous Data Analyst
 
-An AI-powered autonomous data analyst that accepts CSV data, understands its structure, retrieves relevant business context using RAG, and answers business questions through a multi-agent architecture — with built-in retry logic, SQL querying, chart generation, and structured responses.
+A data platform with an AI agent as its serving layer. A public dataset is ingested on a
+schedule, landed in raw storage, modeled through dbt into a warehouse, and checked for data
+quality — and the multi-agent system in this repo answers natural-language questions against
+it, alongside its original CSV-upload mode. The agent side is hand-rolled — a planner,
+complexity-based routing, and a retry loop — rather than built on a framework, with built-in
+SQL querying, chart generation, and structured responses.
 
 ## What it does
-- Accepts CSV file input
+- Accepts CSV file input, or (once the platform lands) queries a warehouse directly
 - Understands data schema automatically
 - Retrieves relevant business context using RAG
 - Routes questions to specialized agents using an LLM powered planner
 - Answers analytical questions using a Python agent with pandas
 - Queries data using a SQL agent with SQLite
 - Generates charts and visualizations using a Chart agent
-- Retries automatically if generated code fails
+- Retries automatically if generated code fails, with a complexity-scaled retry budget
 - Returns structured responses with full metadata
 
 ## Tech Stack
-- Python
-- FastAPI
-- Groq (LLM provider)
-- Llama 3.1 8B Instant / Llama 3.3 70B Versatile / Llama 4 Scout 17B (dynamic model routing)
-- Pandas
-- FAISS
-- Sentence Transformers
-- SQLite
-- Matplotlib
-- Tabulate
+- Python, FastAPI
+- Groq (LLM provider) — `openai/gpt-oss-20b` (fast/cheap) and `openai/gpt-oss-120b`
+  (strongest), dynamically routed by question complexity
+- Pandas, SQLite
+- FAISS, Sentence Transformers
+- Matplotlib, Tabulate
+- pytest — 78 automated tests as of Phase 1 (see `PHASES.md`)
+
+Planned as the platform builds out: Docker, dbt, BigQuery, Airflow, Great Expectations,
+LangGraph, Streamlit. See [`PHASES.md`](PHASES.md) for the full plan.
 
 ## Project Phases
-- V1 — LLM + FastAPI ✅
-- V2 — Code Execution Layer ✅
-- V3 — RAG Integration ✅
-- V4 — Multi Agent Orchestration ✅
-- V4.1 — Refactoring & Testing ✅
-- V4.2 — Dynamic Model Routing ✅
-- V5 — File Upload & Session Management ✅
-- V5.1 — Auth (up next)
+
+The multi-agent serving layer (V1 through V5) is complete — see
+[`PROJECT_PLAN.md`](PROJECT_PLAN.md) for that history. The data platform build is now
+in progress; see [`PHASES.md`](PHASES.md) for the current phase, the full 13-phase plan, and
+locked architectural decisions.
 
 ## Setup
 
@@ -57,6 +59,14 @@ GROQ_API_KEY=your_api_key_here
 5. Run the server
 ```
 uvicorn src.main:app --reload
+```
+
+## Tests
+
+```bash
+pytest                    # unit tests only (default) — no real API calls
+pytest -m live_api        # the handful of tests that hit Groq for real
+pytest --cov=src --cov-report=term-missing
 ```
 
 ## API Endpoints
@@ -87,7 +97,8 @@ curl -X POST http://localhost:8000/upload \
 Sessions expire after 30 minutes of inactivity.
 
 ### POST /ask
-Ask a question using a local file path. Kept for development and local testing.
+Ask a question using a local file path. Kept for development and local testing — not exposed
+publicly until the path-traversal fix in `PHASES.md` Phase 5 lands.
 
 ```bash
 curl -X POST http://localhost:8000/ask \
@@ -103,7 +114,7 @@ curl -X POST http://localhost:8000/ask \
     "status": "success",
     "attempts": 1,
     "time_taken": "2.1s",
-    "model_used": "llama-3.3-70b-versatile",
+    "model_used": "openai/gpt-oss-120b",
     "row_count": 12,
     "column_count": 4,
     "file_name": "sample_data.csv",
@@ -153,10 +164,10 @@ POST /ask (JSON: file_path + question)  ← local dev/testing only
                         │               │          │
                         └───────────────┴──────────┘
                   Dynamic Model per Complexity:
-                  low  → llama-3.1-8b-instant
-                  med  → llama-3.3-70b-versatile
-                  high → llama-4-scout-17b
-                  Retry Logic (max 3 attempts per agent)
+                  low         → openai/gpt-oss-20b
+                  medium/high → openai/gpt-oss-120b
+                  Complexity also scales retry budget (2/3/5 attempts)
+                  and how many sample rows the prompt shows (3/5/10)
                   Artifacts named with session_id (charts + DBs)
                                         │
                                         ↓
@@ -164,3 +175,7 @@ POST /ask (JSON: file_path + question)  ← local dev/testing only
                           (result, status, attempts, model_used,
                            agents_used, chart_path, session_id, ...)
 ```
+
+Once the data platform lands (see `PHASES.md`), a second path queries a BigQuery warehouse
+directly instead of an uploaded CSV — the SQL agent runs against the warehouse, and the Python
+agent works against a bounded sample pulled from it, behind a shared `DataSource` abstraction.

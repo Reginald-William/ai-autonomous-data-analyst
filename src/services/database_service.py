@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd
 import os
 import logging
+from contextlib import closing
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +23,14 @@ def load_csv_to_sqlite(file_path: str, session_id: str = None, original_filename
         # Load CSV into dataframe
         df = pd.read_csv(file_path)
         
-        # Connect to SQLite and load dataframe as table
-        conn = sqlite3.connect(db_path)
-        df.to_sql(table_name, conn, if_exists="replace", index=False)
-        conn.close()
-        
+        # Connect to SQLite and load dataframe as table.
+        # closing() guarantees the connection is closed even if to_sql raises,
+        # which is what was leaving the file locked on Windows.
+        with closing(sqlite3.connect(db_path)) as conn:
+            df.to_sql(table_name, conn, if_exists="replace", index=False)
+
         logger.info(f"CSV loaded into SQLite: {db_path} | Table: {table_name}")
-        
+
         return {
             "db_path": db_path,
             "table_name": table_name,
@@ -36,7 +38,7 @@ def load_csv_to_sqlite(file_path: str, session_id: str = None, original_filename
             "row_count": df.shape[0],
             "column_count": df.shape[1]
         }
-    
+
     except Exception as e:
         logger.error(f"Failed to load CSV to SQLite: {str(e)}")
-        raise Exception(f"Database error: {str(e)}")
+        raise

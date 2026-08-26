@@ -2,7 +2,7 @@ import logging
 import pandas as pd
 import sys
 from io import StringIO
-from src.services.llm_service import get_llm_client, get_model_for_complexity, DEFAULT_MODEL
+from src.services.llm_service import get_llm_client, get_model_for_complexity, get_retry_budget, get_sample_rows, DEFAULT_MODEL
 from src.services.rag_service import retrieve_context
 from fastapi import HTTPException
 import time
@@ -47,16 +47,16 @@ class PythonAgent:
             logger.error(f"Code execution failed: {str(e)}")
             raise Exception(f"Execution error: {str(e)}")
 
-    def get_csv_context(self, file_path: str) -> str:
+    def get_csv_context(self, file_path: str, sample_rows: int = 3) -> str:
         df = pd.read_csv(file_path)
         context = f"Columns: {list(df.columns)}\n"
         # context += f"Data types: {dict(df.dtypes)}\n" Too confusing for LLM, so we convert to string
         context += f"Data types: { {col: str(dtype) for col, dtype in df.dtypes.items()} }\n"
-        context += f"Sample rows:\n{df.head(3).to_string()}"
-        return context 
-    
-    def generate_code(self, question: str, file_path: str, rag_context: str = "") -> str:
-        csv_context = self.get_csv_context(file_path)
+        context += f"Sample rows:\n{df.head(sample_rows).to_string()}"
+        return context
+
+    def generate_code(self, question: str, file_path: str, rag_context: str = "", sample_rows: int = 3) -> str:
+        csv_context = self.get_csv_context(file_path, sample_rows)
 
         prompt = f"""
         You are a data analyst. You have access to a CSV file with the following structure:
@@ -102,8 +102,8 @@ class PythonAgent:
             logger.error(f"Groq API call failed: {str(e)}")
             raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
 
-    def fix_code(self, question: str, failed_code: str, error: str, file_path: str, rag_context: str = "") -> str:
-        csv_context = self.get_csv_context(file_path)
+    def fix_code(self, question: str, failed_code: str, error: str, file_path: str, rag_context: str = "", sample_rows: int = 3) -> str:
+        csv_context = self.get_csv_context(file_path, sample_rows)
     
         prompt = f"""
         You are a data analyst. You have access to a CSV file with the following structure:
@@ -151,10 +151,12 @@ class PythonAgent:
 
     def run(self, question: str, file_path: str, complexity: str = "medium") -> tuple[str, int, str]:
         self.model = get_model_for_complexity(complexity)
-        logger.info(f"Python agent running for question: {question} | complexity={complexity} | model={self.model}")
+        self.max_attempts = get_retry_budget(complexity)
+        sample_rows = get_sample_rows(complexity)
+        logger.info(f"Python agent running for question: {question} | complexity={complexity} | model={self.model} | max_attempts={self.max_attempts}")
 
         rag_context = retrieve_context(question)
-        generated_code = self.clean_code(self.generate_code(question, file_path, rag_context))
+        generated_code = self.clean_code(self.generate_code(question, file_path, rag_context, sample_rows))
         logger.info(f"Generated code:\n{generated_code}")
 
         attempt = 1
@@ -171,5 +173,5 @@ class PythonAgent:
                 if attempt == self.max_attempts:
                     raise Exception(f"Python agent failed after {self.max_attempts} attempts: {str(e)}")
 
-                generated_code = self.clean_code(self.fix_code(question, generated_code, str(e), file_path, rag_context))
+                generated_code = self.clean_code(self.fix_code(question, generated_code, str(e), file_path, rag_context, sample_rows))
                 attempt += 1

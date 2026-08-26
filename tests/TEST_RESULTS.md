@@ -1,5 +1,13 @@
 # Test Results
 
+**Historical record — superseded by the automated suite.** Everything below was run by hand
+against a live server, version by version. The models these results were produced with
+(`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`, `meta-llama/llama-4-scout-17b-16e-instruct`)
+were later removed from the Groq API entirely, so none of these results are reproducible today
+— see `PHASES.md` Phase 1a. The 78 automated tests added in Phase 1c (`pytest -v`) are the
+current source of truth for what's verified to work; this file is kept as a record of what was
+manually checked at each version, not as a live test report.
+
 Manual test results for each version. All tests run against the live API (`POST /ask`) with the server running locally.
 
 ---
