@@ -4,10 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⚠️ Read this first
 
-**The app is currently non-functional.** All three model IDs in `MODEL_ROUTING` were removed
-from the Groq API (verified 2026-08-24 against the live API with the project's key — they are
-*absent*, not merely deprecated). Every request dies at the planner's first LLM call. Fixing
-this is task 1a of Phase 1.
+**Phase 1 is complete** (model remap, pending bug fixes, first 78 automated tests, doc
+rewrite). The app works again — models are `openai/gpt-oss-20b`/`openai/gpt-oss-120b`, not the
+dead Llama IDs. **Phase 2 (config + DI refactor) is next**, on branch `claude/v6.1-config-di`.
 
 **Project direction changed on 2026-08-24.** This repo is no longer heading toward a monetized
 SaaS product. It is now a **Data Engineering portfolio project**, targeting applications from
@@ -18,7 +17,7 @@ platform (ingestion → raw storage → dbt → BigQuery → data quality).
 13-phase plan, current status, locked decisions, risk register, and cost limits. Do not re-plan
 or re-litigate settled decisions.
 
-**Current phase:** 1 — Resurrection + first tests · **Branch:** `claude/v6-revive-and-test`
+**Current phase:** 2 — Config + DI refactor · **Branch:** `claude/v6.1-config-di`
 
 ## Working agreements
 
@@ -192,14 +191,19 @@ to bite while working in this codebase:
 - **The pipeline is file-path-shaped.** `python_agent` assumes one in-memory dataframe, which
   breaks at warehouse scale. This is the deepest change ahead — Phase 8.
 
-## Current State (Phase 1 — Resurrection + first tests, in progress)
+## Current State (Phase 1 complete, Phase 2 next)
 
 V5 file upload merged to `main` via PR #3 (`3a07c1f`). `POST /upload` accepts CSVs via
 multipart/form-data, saved to `data/uploads/{session_id}.csv`, with a 30-minute session TTL so
 users upload once and ask multiple follow-ups. Chart and DB filenames are UUID-based, fixing the
 old `chart.png` collision. `POST /ask` is unchanged for backward compatibility.
 
-Phase 1 is now in progress on `claude/v6-revive-and-test`: remap the dead Groq models, land the
-five pending V5 bug fixes found during Postman testing, and add the first ~52 automated tests.
-`tests/TEST_RESULTS.md` is a historical manual-testing record — its 31 documented results
-predate the Groq model retirement and are unreproducible; the pytest suite supersedes it.
+Phase 1 (on `claude/v6-revive-and-test`) is done: the Groq models are remapped to
+`openai/gpt-oss-20b`/`120b`, the five pending V5 bugs are fixed, 78 automated tests pass, and
+`README.md`/`PROJECT_PLAN.md` reflect the data-platform direction. `tests/TEST_RESULTS.md` is
+now a historical manual-testing record — its 31 documented results predate the Groq model
+retirement and are unreproducible; the pytest suite supersedes it.
+
+**Phase 2 (config + DI refactor) is next**, on branch `claude/v6.1-config-di`: a `config.py`
+`Settings` class for the ~18 hardcoded values, a lazy Groq client, and an agent factory so
+tests can inject fakes instead of hitting the real API.

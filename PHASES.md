@@ -4,7 +4,8 @@
 scoped to roughly one weekend at ~10 hrs/week, has its own branch, and ends mergeable. Work
 **one phase per chat session** — read this file first to find the current phase.
 
-**Last updated:** 2026-08-24 · **Current phase:** 1 · **Branch:** `claude/v6-revive-and-test`
+**Last updated:** 2026-08-26 · **Current phase:** 1 complete, 2 up next · **Branch:**
+`claude/v6-revive-and-test`
 
 ---
 
@@ -50,12 +51,12 @@ testing?"
 
 | # | Phase | Branch | Weekends | Target | Status |
 |---|---|---|---|---|---|
-| 1 | Resurrection + first tests | `claude/v6-revive-and-test` | 1 | Aug 2026 | 🔄 In progress |
+| 1 | Resurrection + first tests | `claude/v6-revive-and-test` | 1 | Aug 2026 | ✅ Done |
 | 2 | Config + DI refactor | `claude/v6.1-config-di` | 1 | Sep 2026 | ⬜ |
 | 3 | API + integration tests, CI | `claude/v6.2-ci` | 1 | Sep 2026 | ⬜ |
 | 4 | Dynamic data context | `claude/v6.3-data-context` | 1 | Sep 2026 | ⬜ |
 | 5 | Docker + Cloud Run + security | `claude/v7-deploy` | 2 | Sep–Oct 2026 | ⬜ |
-| 6 | Ingestion: NYC TLC → Parquet | `claude/v8-ingestion` | 1 | Oct 2026 | ⬜ |
+| 6 | Ingestion: source TBD → Parquet | `claude/v8-ingestion` | 1 | Oct 2026 | ⬜ |
 | 7 | dbt + BigQuery: staging → marts | `claude/v9-dbt-bigquery` | 2 | Oct 2026 | ⬜ |
 | 8 | Data-source abstraction; agent reads marts | `claude/v10-warehouse-serving` | 2 | Nov 2026 | ⬜ |
 | 9 | Airflow (Docker) + Cloud Scheduler | `claude/v11-orchestration` | 2 | Nov 2026 | ⬜ |
@@ -100,7 +101,7 @@ applications, lead with the agent architecture for AI roles.
 
 ---
 
-## Phase 1 — Resurrection + first tests 🔄
+## Phase 1 — Resurrection + first tests ✅
 
 **Branch:** `claude/v6-revive-and-test` · **1 weekend**
 
