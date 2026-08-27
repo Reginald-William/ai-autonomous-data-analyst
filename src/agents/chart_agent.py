@@ -6,15 +6,15 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 from src.services.llm_service import get_llm_client, get_model_for_complexity
+from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 class ChartAgent:
-    def __init__(self):
-        self.client = get_llm_client()
+    def __init__(self, client=None, settings=None):
+        self.client = client if client is not None else get_llm_client()
         self.model = get_model_for_complexity("medium")
-        self.charts_dir = "data/charts"
-        os.makedirs(self.charts_dir, exist_ok=True)
+        self.charts_dir = (settings if settings is not None else get_settings()).charts_dir
 
     def generate_chart_code(self, question: str, data: str, file_path: str, chart_path: str) -> str:
         df = pd.read_csv(file_path)

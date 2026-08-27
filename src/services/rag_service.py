@@ -1,17 +1,11 @@
-import faiss
 import numpy as np
 import os
 import logging
-from sentence_transformers import SentenceTransformer
+
+from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Load embedding model
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# Global FAISS index and chunk storage
-index = None
-chunks = []
 
 def load_documents(doc_folder: str) -> list:
     documents = []
@@ -35,42 +29,82 @@ def split_into_chunks(documents: list) -> list:
                 all_chunks.append({"filename": doc["filename"], "content": paragraph})
     return all_chunks
 
-def build_index(doc_folder: str):
-    global index, chunks
-    
-    logger.info("Building FAISS index")
-    
-    documents = load_documents(doc_folder)
-    chunks = split_into_chunks(documents)
-    
-    logger.info(f"Total chunks created: {len(chunks)}")
-    
-    embeddings = model.encode([chunk["content"] for chunk in chunks])  # Batch encoding for efficiency instead of loop encoding
-    embeddings = np.array(embeddings).astype('float32')
-    logger.info(f"Embeddings generated with shape: {embeddings.shape}")
-    
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dimension)  # Euclidean distance index best for small datasets, can switch to IndexIVFFlat for larger datasets
-    index.add(embeddings)
-    
-    logger.info(f"FAISS index built with {index.ntotal} vectors")
 
-def retrieve_context(question: str, top_k: int = 3) -> str:  #  we retrieve the 3 most relevant chunks (refer notes)
-    global index, chunks
-    
-    if index is None:
-        logger.warning("FAISS index not built yet")
-        return ""
-    
-    question_embedding = model.encode([question])
-    question_embedding = np.array(question_embedding).astype('float32')
-    
-    distances, indices = index.search(question_embedding, top_k)
-    
-    relevant_chunks = []
-    for i, distance in zip(indices[0], distances[0]):
-        if 0 <= i < len(chunks) and distance < 1.5:  # Distance threshold can be tuned based on your dataset and needs (refer notes)
-            relevant_chunks.append(chunks[i]["content"])
-    
-    context = "\n\n".join(relevant_chunks)    
-    return context
+class RagIndex:
+    """Owns the embedding model, FAISS index, and chunk store as instance
+    state instead of module globals. The SentenceTransformer is constructed
+    lazily in _get_model() on first actual use (build or retrieve), not at
+    import time — importing this module (or anything that imports it, e.g.
+    every agent) no longer pays the ~35s model-load cost just to run."""
+
+    def __init__(self, settings=None):
+        self._settings = settings if settings is not None else get_settings()
+        self._model = None
+        self.index = None
+        self.chunks = []
+
+    def _get_model(self):
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            logger.info(f"Loading embedding model: {self._settings.embedding_model}")
+            self._model = SentenceTransformer(self._settings.embedding_model)
+        return self._model
+
+    def build_index(self, doc_folder: str) -> None:
+        import faiss
+
+        logger.info("Building FAISS index")
+
+        documents = load_documents(doc_folder)
+        self.chunks = split_into_chunks(documents)
+
+        logger.info(f"Total chunks created: {len(self.chunks)}")
+
+        embeddings = self._get_model().encode([chunk["content"] for chunk in self.chunks])
+        embeddings = np.array(embeddings).astype('float32')
+        logger.info(f"Embeddings generated with shape: {embeddings.shape}")
+
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatL2(dimension)  # Euclidean distance index best for small datasets, can switch to IndexIVFFlat for larger datasets
+        index.add(embeddings)
+        self.index = index
+
+        logger.info(f"FAISS index built with {self.index.ntotal} vectors")
+
+    def retrieve_context(self, question: str, top_k: int = None) -> str:
+        if top_k is None:
+            top_k = self._settings.rag_top_k
+
+        if self.index is None:
+            logger.warning("FAISS index not built yet")
+            return ""
+
+        question_embedding = self._get_model().encode([question])
+        question_embedding = np.array(question_embedding).astype('float32')
+
+        distances, indices = self.index.search(question_embedding, top_k)
+
+        relevant_chunks = []
+        for i, distance in zip(indices[0], distances[0]):
+            if 0 <= i < len(self.chunks) and distance < self._settings.rag_distance_threshold:
+                relevant_chunks.append(self.chunks[i]["content"])
+
+        return "\n\n".join(relevant_chunks)
+
+
+_rag_index = None
+
+
+def _get_rag_index() -> RagIndex:
+    global _rag_index
+    if _rag_index is None:
+        _rag_index = RagIndex()
+    return _rag_index
+
+
+def build_index(doc_folder: str) -> None:
+    _get_rag_index().build_index(doc_folder)
+
+
+def retrieve_context(question: str, top_k: int = None) -> str:
+    return _get_rag_index().retrieve_context(question, top_k)

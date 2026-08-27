@@ -4,8 +4,8 @@
 scoped to roughly one weekend at ~10 hrs/week, has its own branch, and ends mergeable. Work
 **one phase per chat session** — read this file first to find the current phase.
 
-**Last updated:** 2026-08-26 · **Current phase:** 1 complete, 2 up next · **Branch:**
-`claude/v6-revive-and-test`
+**Last updated:** 2026-08-27 · **Current phase:** 2 complete, 3 up next · **Branch:**
+`claude/v6.1-config-di`
 
 ---
 
@@ -52,7 +52,7 @@ testing?"
 | # | Phase | Branch | Weekends | Target | Status |
 |---|---|---|---|---|---|
 | 1 | Resurrection + first tests | `claude/v6-revive-and-test` | 1 | Aug 2026 | ✅ Done |
-| 2 | Config + DI refactor | `claude/v6.1-config-di` | 1 | Sep 2026 | ⬜ |
+| 2 | Config + DI refactor | `claude/v6.1-config-di` | 1 | Sep 2026 | ✅ Done |
 | 3 | API + integration tests, CI | `claude/v6.2-ci` | 1 | Sep 2026 | ⬜ |
 | 4 | Dynamic data context | `claude/v6.3-data-context` | 1 | Sep 2026 | ⬜ |
 | 5 | Docker + Cloud Run + security | `claude/v7-deploy` | 2 | Sep–Oct 2026 | ⬜ |
@@ -184,32 +184,46 @@ with `openai/gpt-oss-120b`; a `data/*.db` file is deleted after TTL with no `Per
 
 ---
 
-## Phase 2 — Config + DI refactor ⬜
+## Phase 2 — Config + DI refactor ✅
 
-**Branch:** `claude/v6.1-config-di` · **1 weekend**
+**Branch:** `claude/v6.1-config-di` · **1 weekend** · **Completed 2026-08-27**
 
 September's Docker work pulled forward — you cannot ship hardcoded paths and model IDs in a
 container. It also removes the test blockers.
 
 **Added:** `src/config.py` — a `pydantic-settings` `Settings` class owning the ~18 hardcoded
-values (model IDs, `RETRY_BUDGET`, `SESSION_TTL_MINUTES`, `MAX_FILE_SIZE`, row threshold,
-`uploads_dir`, `charts_dir`, `data_dir`, `docs_dir`, embedding model, RAG `top_k` + distance
-threshold, temperatures). Plus `tests/unit/test_config.py` (~8) and
-`tests/unit/test_agent_factory.py` (~5).
+values (model IDs, retry budget, prompt sample rows, `session_ttl_minutes`, `max_file_size`, row
+threshold, `uploads_dir`, `charts_dir`, `data_dir`, `docs_dir`, embedding model, RAG `top_k` +
+distance threshold, temperatures), cached process-wide via `get_settings()` (`@lru_cache`). Plus
+`tests/unit/test_config.py` (11) and `tests/unit/test_agent_factory.py` (5).
 
 **Modified:**
-- `src/services/llm_service.py` — `client = Groq(...)` at import becomes a lazy
-  `get_llm_client()`
-- `src/agents/*.py` — `__init__(self, client=None)` so a fake can be injected
-- `src/services/analyst_service.py` — replace the four module-level agent singletons with a
-  `build_agents()` factory
-- `src/services/rag_service.py` — lazy `SentenceTransformer`; module globals → a `RagIndex` class
-- `src/agents/chart_agent.py` — remove the `os.makedirs` side effect from `__init__`
-- `src/services/analyst_service.py` — `file_path.split("/")[-1]` is POSIX-only and breaks on
-  Windows paths; use `os.path.basename`
+- `src/services/llm_service.py` — `client = Groq(...)` at import became a lazy,
+  `@lru_cache`d `get_llm_client()`; `DEFAULT_MODEL`/`MODEL_ROUTING`/`RETRY_BUDGET`/
+  `PROMPT_SAMPLE_ROWS` now derive from `Settings` instead of hardcoded literals (module
+  attribute names unchanged, so no caller needed to change)
+- `src/agents/*.py` — `__init__(self, client=None)` on all four agents (`chart_agent.py` also
+  takes `settings=None` for `charts_dir`); falls back to `get_llm_client()`/`get_settings()`
+  when nothing is injected
+- `src/services/analyst_service.py` — replaced the four module-level agent singletons with a
+  `build_agents(client=None)` factory called inside `analyse()`; also fixes the shared-singleton
+  mutation race (risk #13) since each request now gets its own agent instances
+- `src/services/rag_service.py` — `SentenceTransformer` and `faiss` imports moved inside
+  methods, model construction deferred to first actual use; module globals (`model`, `index`,
+  `chunks`) replaced with a `RagIndex` class holding that state, wrapped by a lazily-created
+  module-level singleton so `build_index()`/`retrieve_context()` call sites are unchanged
+- `src/agents/chart_agent.py` — removed the `os.makedirs` side effect from `__init__`
+  (directory creation already happens once in `main.py`'s lifespan)
+- `src/services/analyst_service.py` — `file_path.split("/")[-1]` (POSIX-only, broke on Windows
+  paths) replaced with `os.path.basename(file_path)` (risk #15)
 
-**Done when:** `python -c "import src.main"` builds no Groq client and loads no transformer;
-Phase 1 tests still pass.
+**Measured impact:** full non-live suite dropped from 32.82s to 2.09s (94 tests) — the ~35s
+SentenceTransformer import-time tax (risk #8) is gone since nothing imports the model at
+collection time anymore.
+
+**Done when:** `python -c "import src.main"` builds no Groq client and loads no transformer
+✅ verified (Groq `lru_cache` shows 0 hits/misses after import; no "Loading weights" output);
+Phase 1 tests still pass ✅ (94/94, `pytest -m "not live_api"`).
 
 ---
 
@@ -484,14 +498,14 @@ Strong addition if time allows.
 | 5 | BigQuery cost blowout — LLM `SELECT *` with no `maximum_bytes_billed` | High | 7, 8 |
 | 6 | Docker image ~3.5 GB from torch/faiss for a 3 KB corpus | High | 5 |
 | 7 | RAG hardcoded to TechMart — other datasets rejected out-of-scope | High | 4 |
-| 8 | Import-time singletons block clean testing — confirmed 2026-08-26: `tests/unit/test_cleaners.py` took 35s (vs <1s for every other Phase 1c file) because instantiating any agent imports `rag_service`, which loads a real SentenceTransformer at import | High | 2 |
+| 8 | ~~Import-time singletons block clean testing~~ — **Resolved in Phase 2.** Confirmed 2026-08-26: `tests/unit/test_cleaners.py` took 35s because instantiating any agent imported `rag_service`, which loaded a real SentenceTransformer at import. Fixed by deferring the `SentenceTransformer`/`faiss` imports and model construction into `RagIndex` methods. Full suite time dropped 32.82s → 2.09s. | High | 2 ✅ |
 | 9 | Groq 8K TPM ceiling vs 131k-context models; needs backoff | Medium | 1, 4 |
 | 10 | Airflow on Windows needs WSL2; Composer has no free tier | Medium | 9 |
 | 11 | `sys.stdout` reassignment corrupts pytest capture | Medium | 3 |
 | 12 | 7 redundant `pd.read_csv` calls — up to 6 reads per request | Medium | 4, 8 |
-| 13 | Shared-singleton `self.model` mutation — races under concurrency | Medium | 2 |
+| 13 | ~~Shared-singleton `self.model` mutation — races under concurrency~~ — **Resolved in Phase 2** via `build_agents()` constructing fresh agent instances per request instead of four import-time module singletons | Medium | 2 ✅ |
 | 14 | Chart-only plan → `result=None` → Pydantic `ValidationError` → 500 | Medium | 3 |
-| 15 | POSIX-only `split("/")` breaks on Windows paths | Low | 2 |
+| 15 | ~~POSIX-only `split("/")` breaks on Windows paths~~ — **Resolved in Phase 2**, replaced with `os.path.basename()` in `analyst_service.py` | Low | 2 ✅ |
 | 16 | Table name interpolated into `to_sql` with only `-`/space sanitized | Low | 1 |
 | 17 | `requests` imported by `groq_all_models.py` but not in requirements | Low | 1 |
 | 18 | `HTTPException` raised from the service layer — HTTP coupling in domain code | Low | 2 |

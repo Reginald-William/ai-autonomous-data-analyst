@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Phase 1 is complete** (model remap, pending bug fixes, first 78 automated tests, doc
 rewrite). The app works again — models are `openai/gpt-oss-20b`/`openai/gpt-oss-120b`, not the
-dead Llama IDs. **Phase 2 (config + DI refactor) is next**, on branch `claude/v6.1-config-di`.
+dead Llama IDs. **Phase 2 (config + DI refactor) is also complete** — `src/config.py`, a lazy
+Groq client, injectable agent clients via `build_agents()`, and a lazy RAG index. **Phase 3
+(API + integration tests, CI) is next**, on branch `claude/v6.2-ci`.
 
 **Project direction changed on 2026-08-24.** This repo is no longer heading toward a monetized
 SaaS product. It is now a **Data Engineering portfolio project**, targeting applications from
@@ -17,7 +19,8 @@ platform (ingestion → raw storage → dbt → BigQuery → data quality).
 13-phase plan, current status, locked decisions, risk register, and cost limits. Do not re-plan
 or re-litigate settled decisions.
 
-**Current phase:** 2 — Config + DI refactor · **Branch:** `claude/v6.1-config-di`
+**Current phase:** 3 — API + integration tests, CI · **Branch:** `claude/v6.2-ci` (not yet cut —
+still on `claude/v6.1-config-di` as of this writing)
 
 ## Working agreements
 
@@ -133,8 +136,9 @@ Follow-up: POST /upload (session_id + question, no file)
   are hardcoded to `sample_data.csv`, so questions about any other dataset get rejected as
   out-of-scope. Fixed in Phase 4.
 - **`src/services/llm_service.py`**: Groq client, `DEFAULT_MODEL`, `MODEL_ROUTING`, and
-  `get_model_for_complexity()`. The client is constructed **at import time**, which blocks clean
-  testing — made lazy in Phase 2.
+  `get_model_for_complexity()`. The client is now constructed lazily via a `@lru_cache`d
+  `get_llm_client()` (Phase 2) — no client is built at import time. Model routing values are
+  read from `src/config.py`'s `Settings`.
 - **`src/services/database_service.py`**: On-demand CSV → SQLite conversion. DB saved as
   `data/{session_id}_{table_name}.db`.
 
@@ -146,20 +150,28 @@ Follow-up: POST /upload (session_id + question, no file)
 
 ## Configuration
 
-**Model routing — being remapped in Phase 1.** The three configured Llama IDs are gone from
-Groq. The only usable free-tier text models are `openai/gpt-oss-20b` (fast/cheap) and
-`openai/gpt-oss-120b` (strongest). Because two tiers must share one model, **tiering is being
-re-derived to mean more than model identity**: complexity will drive model *and* retry budget
-(`RETRY_BUDGET`) *and* prompt richness (`PROMPT_SAMPLE_ROWS`). This keeps the two-call planner
-and the 500-row threshold meaningful. See `PHASES.md` Phase 1a.
+**Centralized in `src/config.py`** (Phase 2) — a `pydantic-settings` `Settings` class, accessed
+via the process-cached `get_settings()`. Owns model IDs, retry budget, prompt sample rows, the
+500-row complexity threshold, session TTL, max file size, all data/docs/upload/chart paths, the
+embedding model name, and RAG `top_k`/distance threshold. Every field is overridable via an env
+var or `.env` entry of the same name (uppercased); defaults match the values that were
+previously hardcoded, so no `.env` changes are required after this refactor.
 
-- Embeddings: `all-MiniLM-L6-v2` via sentence-transformers
-- FAISS index built at startup in the `src/main.py` lifespan handler
-- Environment: `GROQ_API_KEY` required in `.env`
+**Model routing — remapped in Phase 1.** The three previously configured Llama IDs are gone
+from Groq. The only usable free-tier text models are `openai/gpt-oss-20b` (fast/cheap) and
+`openai/gpt-oss-120b` (strongest). Because two tiers must share one model, **tiering means more
+than model identity**: complexity drives model *and* retry budget (`Settings.retry_budget`)
+*and* prompt richness (`Settings.prompt_sample_rows`). This keeps the two-call planner and the
+500-row threshold meaningful.
+
+- Embeddings: `all-MiniLM-L6-v2` via sentence-transformers, loaded lazily on first RAG use
+  (Phase 2) — not at import time
+- FAISS index built at startup in the `src/main.py` lifespan handler (still eager there, by
+  design — the app needs it ready before serving requests)
+- Environment: `GROQ_API_KEY` required in `.env`; the Groq client itself is constructed lazily
+  on first use (Phase 2), not at import time
 - Groq free tier: 30 RPM, 1k RPD, **8K TPM**, 200k TPD — the TPM ceiling is tight against
   131k-context models
-- ~18 values are currently hardcoded across the codebase (paths, model IDs, thresholds,
-  temperatures). Centralized into `src/config.py` in Phase 2.
 
 ## Data
 
@@ -182,16 +194,17 @@ to bite while working in this codebase:
   `python_agent.py` and `chart_agent.py` is misleading — `exec` auto-injects `__builtins__`, so
   `open`, `__import__`, and `os` are reachable. This is RCE if deployed publicly. Phase 5.
 - **`/ask` has a path-traversal hole** — caller-supplied `file_path`, unvalidated. Phase 5.
-- **Import-time side effects** — `llm_service` builds a Groq client and `rag_service` loads a
-  SentenceTransformer at import; `analyst_service` constructs four agent singletons. Any test
-  importing `src/` pays all three. Phase 2.
+- ~~**Import-time side effects**~~ — **Fixed in Phase 2.** `llm_service.get_llm_client()` is now
+  lazy (`@lru_cache`), `rag_service`'s `SentenceTransformer`/`faiss` load on first RAG use via a
+  `RagIndex` class, and `analyst_service.build_agents()` replaces the four import-time agent
+  singletons. `python -c "import src.main"` builds no client and loads no transformer.
 - **SQLite connections aren't in try-finally** — the cause of Windows `PermissionError` during
   session cleanup. Phase 1b.
 - **7 redundant `pd.read_csv` calls** — one request can read the same file up to 6 times.
 - **The pipeline is file-path-shaped.** `python_agent` assumes one in-memory dataframe, which
   breaks at warehouse scale. This is the deepest change ahead — Phase 8.
 
-## Current State (Phase 1 complete, Phase 2 next)
+## Current State (Phase 2 complete, Phase 3 next)
 
 V5 file upload merged to `main` via PR #3 (`3a07c1f`). `POST /upload` accepts CSVs via
 multipart/form-data, saved to `data/uploads/{session_id}.csv`, with a 30-minute session TTL so
@@ -204,6 +217,16 @@ Phase 1 (on `claude/v6-revive-and-test`) is done: the Groq models are remapped t
 now a historical manual-testing record — its 31 documented results predate the Groq model
 retirement and are unreproducible; the pytest suite supersedes it.
 
-**Phase 2 (config + DI refactor) is next**, on branch `claude/v6.1-config-di`: a `config.py`
-`Settings` class for the ~18 hardcoded values, a lazy Groq client, and an agent factory so
-tests can inject fakes instead of hitting the real API.
+Phase 2 (config + DI refactor, on `claude/v6.1-config-di`) is done: `src/config.py` centralizes
+the ~18 previously hardcoded values behind a `pydantic-settings` `Settings` class; the Groq
+client and the RAG `SentenceTransformer`/FAISS index are now built lazily instead of at import
+time; all four agents accept an injectable `client`; `analyst_service.build_agents()` replaces
+the four import-time agent singletons (also closing the shared-singleton mutation race); and the
+POSIX-only `split("/")` path bug is fixed. 16 new tests added (`test_config.py`,
+`test_agent_factory.py`) — full non-live suite is 94 tests, and dropped from 32.82s to 2.09s
+since nothing loads a SentenceTransformer at collection time anymore.
+
+**Phase 3 (API + integration tests, CI) is next**, on branch `claude/v6.2-ci`: integration tests
+for `/upload` and `/ask`, an orchestration test suite covering the python/sql `elif` mutual
+exclusion and the chart-only-plan 500 bug, a `live_api`-marked test file, and a GitHub Actions
+CI workflow.

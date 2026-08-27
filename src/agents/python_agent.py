@@ -10,8 +10,8 @@ import time
 logger = logging.getLogger(__name__)
 
 class PythonAgent:
-    def __init__(self):
-        self.client = get_llm_client()
+    def __init__(self, client=None):
+        self.client = client if client is not None else get_llm_client()
         self.model = DEFAULT_MODEL
         self.max_attempts = 3
 

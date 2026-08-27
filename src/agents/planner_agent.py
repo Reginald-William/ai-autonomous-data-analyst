@@ -6,8 +6,8 @@ from src.services.rag_service import retrieve_context
 logger = logging.getLogger(__name__)
 
 class PlannerAgent:
-    def __init__(self):
-        self.client = get_llm_client()
+    def __init__(self, client=None):
+        self.client = client if client is not None else get_llm_client()
         self.model = DEFAULT_MODEL
         self.complexity_model = MODEL_ROUTING["low"]  # gpt-oss-20b — fast, cheap, focused
 
