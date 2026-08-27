@@ -25,7 +25,8 @@ SQL querying, chart generation, and structured responses.
 - Pandas, SQLite
 - FAISS, Sentence Transformers
 - Matplotlib, Tabulate
-- pytest — 78 automated tests as of Phase 1 (see `PHASES.md`)
+- pydantic-settings — centralized config (Phase 2)
+- pytest — 94 automated tests as of Phase 2 (see `PHASES.md`)
 
 Planned as the platform builds out: Docker, dbt, BigQuery, Airflow, Great Expectations,
 LangGraph, Streamlit. See [`PHASES.md`](PHASES.md) for the full plan.
