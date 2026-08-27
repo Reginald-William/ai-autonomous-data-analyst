@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import pandas as pd
 from datetime import datetime
@@ -14,12 +15,27 @@ from src.utils.schemas import AnalysisResponse
 
 logger = logging.getLogger(__name__)
 
-planner = PlannerAgent()
-python_agent = PythonAgent()
-sql_agent = SQLAgent()
-chart_agent = ChartAgent()
+
+def build_agents(client=None) -> dict:
+    """Construct a fresh set of agents. Replaces the old module-level
+    singletons (built once at import time) so tests can inject a fake LLM
+    client instead of hitting the real Groq API — pass client= to have it
+    forwarded to every agent instead of each one lazily building its own."""
+    return {
+        "planner": PlannerAgent(client=client),
+        "python": PythonAgent(client=client),
+        "sql": SQLAgent(client=client),
+        "chart": ChartAgent(client=client),
+    }
+
 
 def analyse(question: str, file_path: str, session_id: str = None, original_filename: str = None) -> AnalysisResponse:
+    agents_map = build_agents()
+    planner = agents_map["planner"]
+    python_agent = agents_map["python"]
+    sql_agent = agents_map["sql"]
+    chart_agent = agents_map["chart"]
+
     if session_id is None:
         session_id = str(uuid4())  # auto-generate for /ask backward compat
     start_time = time.time()
@@ -29,7 +45,7 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
         row_count = len(df)
         column_count = len(df.columns)
         # Use original filename for display if provided (e.g. from upload), else extract from path
-        file_name = original_filename if original_filename else file_path.split("/")[-1]
+        file_name = original_filename if original_filename else os.path.basename(file_path)
         logger.info(f"CSV loaded: {row_count} rows, {column_count} columns | File: {file_name}")
 
         if row_count == 0:
