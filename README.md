@@ -1,5 +1,7 @@
 # Autonomous Data Analyst
 
+[![CI](https://github.com/Reginald-William/ai-autonomous-data-analyst/actions/workflows/ci.yml/badge.svg)](https://github.com/Reginald-William/ai-autonomous-data-analyst/actions/workflows/ci.yml)
+
 A data platform with an AI agent as its serving layer. A public dataset is ingested on a
 schedule, landed in raw storage, modeled through dbt into a warehouse, and checked for data
 quality — and the multi-agent system in this repo answers natural-language questions against
@@ -26,7 +28,8 @@ SQL querying, chart generation, and structured responses.
 - FAISS, Sentence Transformers
 - Matplotlib, Tabulate
 - pydantic-settings — centralized config (Phase 2)
-- pytest — 94 automated tests as of Phase 2 (see `PHASES.md`)
+- pytest — 119 automated tests as of Phase 3, 83.66% coverage (see `PHASES.md`)
+- ruff (lint) + GitHub Actions CI — matrix Python 3.11/3.13 (Phase 3)
 
 Planned as the platform builds out: Docker, dbt, BigQuery, Airflow, Great Expectations,
 LangGraph, Streamlit. See [`PHASES.md`](PHASES.md) for the full plan.

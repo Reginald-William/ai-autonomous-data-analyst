@@ -8,7 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 rewrite). The app works again — models are `openai/gpt-oss-20b`/`openai/gpt-oss-120b`, not the
 dead Llama IDs. **Phase 2 (config + DI refactor) is also complete** — `src/config.py`, a lazy
 Groq client, injectable agent clients via `build_agents()`, and a lazy RAG index. **Phase 3
-(API + integration tests, CI) is next**, on branch `claude/v6.2-ci`.
+(API + integration tests, CI) is also complete** — integration tests for `/upload`/`/ask`,
+two real bugs found and fixed (see `docs/BUGS_FOUND.md`), a live-API test file, and a GitHub
+Actions CI workflow. **Phase 4 (dynamic data context) is next**, on branch
+`claude/v6.3-data-context`.
 
 **Project direction changed on 2026-08-24.** This repo is no longer heading toward a monetized
 SaaS product. It is now a **Data Engineering portfolio project**, targeting applications from
@@ -19,8 +22,8 @@ platform (ingestion → raw storage → dbt → BigQuery → data quality).
 13-phase plan, current status, locked decisions, risk register, and cost limits. Do not re-plan
 or re-litigate settled decisions.
 
-**Current phase:** 3 — API + integration tests, CI · **Branch:** `claude/v6.2-ci` (not yet cut —
-still on `claude/v6.1-config-di` as of this writing)
+**Current phase:** 4 — Dynamic data context · **Branch:** `claude/v6.3-data-context` (not yet
+cut — still on `claude/v6.2-ci` as of this writing)
 
 ## Working agreements
 
@@ -126,8 +129,10 @@ Follow-up: POST /upload (session_id + question, no file)
 
 - **`src/services/analyst_service.py`**: Main orchestration. Loads CSV, extracts metadata, calls
   PlannerAgent (passing `row_count`), dispatches to agents with `complexity` and `session_id`,
-  returns a structured response. Note `python` and `sql` are mutually exclusive via `elif` —
-  python wins if the planner returns both.
+  returns a structured response. `python` and `sql` both run independently if the planner names
+  both (fixed in Phase 3 — previously `elif`-chained, so `sql` was silently dropped; results are
+  now labeled and concatenated). A chart-only plan is coerced to include `python` before
+  dispatch, since ChartAgent has nothing to chart without a prior computed result.
 - **`src/services/session_service.py`**: In-memory session store. Maps `session_id` →
   `{file_path, original_filename, created_at, last_accessed}`. TTL 30 minutes. Background
   cleanup every 5 minutes; startup sweep removes orphans.
@@ -204,7 +209,7 @@ to bite while working in this codebase:
 - **The pipeline is file-path-shaped.** `python_agent` assumes one in-memory dataframe, which
   breaks at warehouse scale. This is the deepest change ahead — Phase 8.
 
-## Current State (Phase 2 complete, Phase 3 next)
+## Current State (Phase 3 complete, Phase 4 next)
 
 V5 file upload merged to `main` via PR #3 (`3a07c1f`). `POST /upload` accepts CSVs via
 multipart/form-data, saved to `data/uploads/{session_id}.csv`, with a 30-minute session TTL so
@@ -226,7 +231,20 @@ POSIX-only `split("/")` path bug is fixed. 16 new tests added (`test_config.py`,
 `test_agent_factory.py`) — full non-live suite is 94 tests, and dropped from 32.82s to 2.09s
 since nothing loads a SentenceTransformer at collection time anymore.
 
-**Phase 3 (API + integration tests, CI) is next**, on branch `claude/v6.2-ci`: integration tests
-for `/upload` and `/ask`, an orchestration test suite covering the python/sql `elif` mutual
-exclusion and the chart-only-plan 500 bug, a `live_api`-marked test file, and a GitHub Actions
-CI workflow.
+Phase 3 (API + integration tests, CI, on `claude/v6.2-ci`) is done: integration tests for
+`/upload` and `/ask` using `TestClient` and a `FakeGroqClient` (no real Groq calls);
+an orchestration test suite that caught and fixed two real bugs — the python/sql `elif` mutual
+exclusion (sql was silently dropped when both agents were named) and the chart-only-plan crash
+(`result=None` failing Pydantic validation) — both documented in `docs/BUGS_FOUND.md`; a
+`live_api`-marked test file verified against the real Groq API; and a GitHub Actions CI
+workflow (matrix 3.11/3.13, `ruff check`, 70% coverage gate, no `GROQ_API_KEY` in the job).
+Also fixed `python_agent.execute_code`'s `sys.stdout` reassignment
+(`contextlib.redirect_stdout`) and cleaned up lint issues surfaced by `ruff`. The `/ask`
+path-traversal hole was confirmed live (not just theoretical) during this phase via a browser
+reproduction against a real running server. 119 total tests (115 non-live + 4 live), 1 `xfail`,
+83.66% coverage.
+
+**Phase 4 (dynamic data context) is next**, on branch `claude/v6.3-data-context`: a
+`data_context_service.py` that generates dataset-agnostic context (row/column counts, dtypes,
+categorical values, numeric ranges) so the app stops being hardcoded to `sample_data.csv`'s
+TechMart shape.

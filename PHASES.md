@@ -4,8 +4,8 @@
 scoped to roughly one weekend at ~10 hrs/week, has its own branch, and ends mergeable. Work
 **one phase per chat session** — read this file first to find the current phase.
 
-**Last updated:** 2026-08-27 · **Current phase:** 2 complete, 3 up next · **Branch:**
-`claude/v6.1-config-di`
+**Last updated:** 2026-08-28 · **Current phase:** 3 complete, 4 up next · **Branch:**
+`claude/v6.2-ci`
 
 ---
 
@@ -23,7 +23,7 @@ a competent AI app, not evidence of pipeline engineering.
 of a real platform:
 
 ```
-Public API (NYC TLC), ingested on a schedule
+Public API (source TBD — see Phase 6), ingested on a schedule
     -> ingestion (Python, orchestrated by Airflow)
 Raw storage (local Parquet / GCS)
     -> transformation (dbt: staging -> intermediate -> marts)
@@ -53,7 +53,7 @@ testing?"
 |---|---|---|---|---|---|
 | 1 | Resurrection + first tests | `claude/v6-revive-and-test` | 1 | Aug 2026 | ✅ Done |
 | 2 | Config + DI refactor | `claude/v6.1-config-di` | 1 | Sep 2026 | ✅ Done |
-| 3 | API + integration tests, CI | `claude/v6.2-ci` | 1 | Sep 2026 | ⬜ |
+| 3 | API + integration tests, CI | `claude/v6.2-ci` | 1 | Sep 2026 | ✅ Done |
 | 4 | Dynamic data context | `claude/v6.3-data-context` | 1 | Sep 2026 | ⬜ |
 | 5 | Docker + Cloud Run + security | `claude/v7-deploy` | 2 | Sep–Oct 2026 | ⬜ |
 | 6 | Ingestion: source TBD → Parquet | `claude/v8-ingestion` | 1 | Oct 2026 | ⬜ |
@@ -227,23 +227,62 @@ Phase 1 tests still pass ✅ (94/94, `pytest -m "not live_api"`).
 
 ---
 
-## Phase 3 — API + integration tests, CI ⬜
+## Phase 3 — API + integration tests, CI ✅
 
-**Branch:** `claude/v6.2-ci` · **1 weekend**
+**Branch:** `claude/v6.2-ci` · **1 weekend** · **Completed 2026-08-28**
 
 **Added:**
-- `tests/integration/test_upload_endpoint.py` (~14) — ports TEST_RESULTS.md scenarios 1–10
-- `tests/integration/test_ask_endpoint.py` (~6) — backward compat, plus a path-traversal
-  rejection test marked `xfail` until Phase 5
-- `tests/integration/test_analyst_orchestration.py` (~12) — routing → dispatch, the
-  `python`/`sql` `elif` mutual exclusion, out-of-scope short circuit, chart-only plan (a latent
-  500: `result=None` fails Pydantic validation), agent-failure path
-- `tests/live/test_live_api.py` (~3) — `@pytest.mark.live_api`, deselected by default
-- `.github/workflows/ci.yml` — matrix 3.11/3.13, `ruff check`, `pytest -m "not live_api"
-  --cov=src --cov-fail-under=70`. **Never** put `GROQ_API_KEY` in the default CI job.
+- `tests/integration/test_analyst_orchestration.py` (5) — routing → dispatch via
+  `FakeGroqClient` (a content-sniffing fake in `conftest.py` that drives the real `analyse()`
+  end to end, no real Groq calls). Caught and fixed two real bugs — see `docs/BUGS_FOUND.md`
+  #1–2: the `python`/`sql` `elif` mutual exclusion (sql was silently dropped when both were
+  named — now both run independently, results labeled and concatenated) and the chart-only
+  plan crash (`result=None` failing `AnalysisResponse`'s Pydantic validation — now coerced to
+  `["python", "chart"]` before dispatch).
+- `tests/integration/test_upload_endpoint.py` (10) — ports `TEST_RESULTS.md`'s V5 scenarios
+  into automated `TestClient` requests: first upload, session follow-up, chart routing,
+  non-CSV/empty/corrupt-file rejection, invalid session 404, missing-file 400,
+  session-priority-over-file, oversized-file rejection.
+- `tests/integration/test_ask_endpoint.py` (6 + 1 `xfail`) — backward compat, auto-generated
+  session_id, 404/400 paths, and one `xfail`-marked path-traversal test documenting the known
+  hole (confirmed live during this phase — see below) until Phase 5 fixes it.
+- `tests/live/test_live_api.py` (4) — `@pytest.mark.live_api`, deselected by default,
+  `skipif`-guarded when no real key is configured. Verified live: both `openai/gpt-oss-20b`
+  and `openai/gpt-oss-120b` still respond.
+- `.github/workflows/ci.yml` — matrix 3.11/3.13, `actions/checkout@v4` +
+  `actions/setup-python@v5`, `ruff check .`, `pytest -m "not live_api" --cov=src
+  --cov-fail-under=70`. No `GROQ_API_KEY` anywhere in the job.
+- `docs/BUGS_FOUND.md` — new running bug log (separate from this file's risk register), used
+  throughout this phase.
 
-**Note:** `python_agent.execute_code` reassigns `sys.stdout`, which corrupts pytest capture if
-an exception path skips the restore. Consider `contextlib.redirect_stdout`.
+**Modified:**
+- `src/agents/python_agent.py` — `execute_code`'s manual `sys.stdout` reassign/restore
+  replaced with `contextlib.redirect_stdout`, closing the "exception path skips the restore"
+  gap this phase's own note flagged. The deeper concurrency issue (two simultaneous requests
+  fighting over the same process-wide `sys.stdout`) is **not** fixed by this — see
+  `docs/BUGS_FOUND.md` #3 and Phase 5.
+- Lint cleanup surfaced by adding `ruff` to CI: an unnecessary f-string prefix
+  (`src/routes/ask.py`), import-order issues from `load_dotenv()` sitting between imports
+  (`src/services/llm_service.py`, `src/groq_all_models.py`), an unused `import os` left over
+  from Phase 2's `chart_agent.py` cleanup, and two unused test imports.
+- `tests/unit/test_database_service.py` — two tests were using `with sqlite3.connect(...) as
+  conn:`, which only manages the transaction, not the connection lifetime — the connection was
+  never actually closed. Switched to `with closing(sqlite3.connect(...)) as conn:`, the same
+  pattern the Phase 1b fix already uses in the real `database_service.py`.
+
+**Verified live, not just via docs:** the `/ask` path-traversal hole (risk #3) was reproduced
+against a real running server via the browser's `/docs` Swagger UI, using `file_path: ".env"`
+— confirmed reading and returning the contents of the real `.env` file, including the live
+`GROQ_API_KEY`. Key was rotated afterward as a precaution. This confirms the `xfail` test's
+premise is accurate, not just theoretical.
+
+**Also documented (not part of this phase's code):** a future multi-user/login SaaS idea was
+raised and parked as "Candidate Phase 15+" below — explicitly not reopening the no-SaaS locked
+decision, gated on all 13 phases finishing first.
+
+**Result:** 119 tests total (115 non-live + 4 live), 1 `xfail`, 83.66% coverage (`--cov=src`),
+`ruff check .` clean. **Done when** criteria met: green CI run on first push (matrix 3.11/3.13
+both green), ~100+ tests, ≥70% coverage.
 
 **Done when:** green CI badge in README; ~100 tests; ≥70% coverage.
 
@@ -487,13 +526,64 @@ Strong addition if time allows.
 
 ---
 
+## Candidate Phase 15+ — multi-user SaaS (post-portfolio only, not scheduled)
+
+**Not part of the 13-phase plan. Does not reopen locked decision #6** ("Monetization killed.
+No SaaS tiers, no usage tracking, no API-key billing, no white-label"). That decision still
+governs everything through Phase 13. This section exists only so a future idea raised in
+conversation (2026-08-28) doesn't get lost — it is explicitly **out of scope until the
+portfolio (Phases 1–13) is fully complete**, and picking it up at all is a separate future
+decision, not a commitment.
+
+**The idea:** evolve the finished portfolio project into a real multi-user product — user
+accounts/login, each user uploading their own CSVs and asking questions, isolated from other
+users' data and sessions.
+
+**Why this waits for all 13 phases to finish, not just some of them:** the current
+architecture makes assumptions a multi-user product can't share:
+
+- **`session_service.py`'s in-memory `_sessions` dict** has no concept of a user, only an
+  ephemeral `session_id` with a 30-minute TTL and no auth — it assumes one operator (you)
+  running local demos, not persistent per-user accounts.
+- **`exec()` of LLM-generated code is unsandboxed** (`PHASES.md` risk #2) and has a
+  process-wide `sys.stdout` concurrency race even after the Phase 3 `redirect_stdout` fix (see
+  `docs/BUGS_FOUND.md` #3) — both are dormant under single-operator use and become active
+  risks the moment multiple people can hit the server concurrently. A real multi-user login
+  product is exactly the scenario that turns "dormant" into "actively exploited," so the
+  subprocess/sandboxing isolation discussed for Phase 5 would need to be fully solved first,
+  not just documented as deferred.
+- **The `/ask` path-traversal hole** (risk #3) is deferred to Phase 5 on the assumption of a
+  single trusted operator during the portfolio's demo life; a public multi-tenant login
+  product raises the stakes on every unresolved security item in the risk register, not just
+  this one.
+- **The data platform work itself (Phases 6–10: ingestion, dbt, BigQuery, orchestration, data
+  quality)** is the actual point of the portfolio pivot — building a login/billing layer before
+  that exists would be building SaaS scaffolding around a project that doesn't have its core
+  differentiator yet.
+
+**What it would concretely need, at minimum, whenever it's picked up:** user accounts +
+authentication (e.g. a real auth provider, not hand-rolled), per-user data isolation in
+storage (not just filename-prefixing, which is what session_id does today), the subprocess/
+sandboxing fix for `exec()` (see the concurrency discussion in this phase's chat history —
+each code execution needs its own isolated process, which also happens to be the fix for the
+`sys.stdout` race), usage limits/rate limiting per user (cost control against the free-tier
+ceilings in the Cost Summary table below), and a real decision on hosting cost model since
+"free tier" assumptions throughout this plan are sized for one operator's demo traffic, not
+multiple concurrent users.
+
+**Status:** parked idea, not a plan. Revisit only after Phase 13 ships, and only as a
+deliberate new decision at that time — not something to start pulling forward piece by piece
+during Phases 1–13.
+
+---
+
 ## Risk register
 
 | # | Risk | Severity | Phase |
 |---|---|---|---|
 | 1 | App fully dead — all 3 model IDs absent from Groq | Critical | 1 |
 | 2 | `exec()` of LLM code = RCE once public; `safe_environment` is not a sandbox | Critical | 5 |
-| 3 | `/ask` path traversal — unvalidated caller-supplied `file_path` | High | 5 |
+| 3 | `/ask` path traversal — unvalidated caller-supplied `file_path`. **Confirmed live** during Phase 3 (browser reproduction against a real running server read `.env`, including the real `GROQ_API_KEY` — key rotated afterward). Still deferred to Phase 5, but no longer theoretical. | High | 5 |
 | 4 | Pipeline is file-path-shaped; Python agent assumes one in-memory df | High | 8 |
 | 5 | BigQuery cost blowout — LLM `SELECT *` with no `maximum_bytes_billed` | High | 7, 8 |
 | 6 | Docker image ~3.5 GB from torch/faiss for a 3 KB corpus | High | 5 |
@@ -501,10 +591,10 @@ Strong addition if time allows.
 | 8 | ~~Import-time singletons block clean testing~~ — **Resolved in Phase 2.** Confirmed 2026-08-26: `tests/unit/test_cleaners.py` took 35s because instantiating any agent imported `rag_service`, which loaded a real SentenceTransformer at import. Fixed by deferring the `SentenceTransformer`/`faiss` imports and model construction into `RagIndex` methods. Full suite time dropped 32.82s → 2.09s. | High | 2 ✅ |
 | 9 | Groq 8K TPM ceiling vs 131k-context models; needs backoff | Medium | 1, 4 |
 | 10 | Airflow on Windows needs WSL2; Composer has no free tier | Medium | 9 |
-| 11 | `sys.stdout` reassignment corrupts pytest capture | Medium | 3 |
+| 11 | ~~`sys.stdout` reassignment corrupts pytest capture~~ — **Partially resolved in Phase 3.** Replaced with `contextlib.redirect_stdout`, which guarantees restoration even on `BaseException`. The underlying concurrency issue (shared process-wide `sys.stdout` under simultaneous requests) is **not** fixed — same root cause as risk #2, deferred there. See `docs/BUGS_FOUND.md` #3. | Medium | 3 ✅ (partial) |
 | 12 | 7 redundant `pd.read_csv` calls — up to 6 reads per request | Medium | 4, 8 |
 | 13 | ~~Shared-singleton `self.model` mutation — races under concurrency~~ — **Resolved in Phase 2** via `build_agents()` constructing fresh agent instances per request instead of four import-time module singletons | Medium | 2 ✅ |
-| 14 | Chart-only plan → `result=None` → Pydantic `ValidationError` → 500 | Medium | 3 |
+| 14 | ~~Chart-only plan → `result=None` → Pydantic `ValidationError` → 500~~ — **Resolved in Phase 3.** A chart-only plan is now coerced to `["python", "chart"]` right after the planner call. See `docs/BUGS_FOUND.md` #2. | Medium | 3 ✅ |
 | 15 | ~~POSIX-only `split("/")` breaks on Windows paths~~ — **Resolved in Phase 2**, replaced with `os.path.basename()` in `analyst_service.py` | Low | 2 ✅ |
 | 16 | Table name interpolated into `to_sql` with only `-`/space sanitized | Low | 1 |
 | 17 | `requests` imported by `groq_all_models.py` but not in requirements | Low | 1 |
