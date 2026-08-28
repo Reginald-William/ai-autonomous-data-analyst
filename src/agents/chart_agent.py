@@ -1,5 +1,4 @@
 import logging
-import os
 from uuid import uuid4
 import matplotlib
 matplotlib.use('Agg')

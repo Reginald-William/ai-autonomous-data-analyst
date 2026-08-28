@@ -22,7 +22,7 @@ class AskRequest(BaseModel):
 
 @router.post("/ask", response_model=AnalysisResponse)
 def ask_question(request: AskRequest):
-    logger.info(f"Request received: POST /ask")
+    logger.info("Request received: POST /ask")
     logger.info(f"Question: {request.question} | File: {request.file_path}")
     result = analyse(request.question, request.file_path)
     logger.info(f"Request completed | Status: {result.status} | Attempts: {result.attempts} | Time: {result.time_taken}")
