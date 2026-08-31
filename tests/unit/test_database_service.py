@@ -11,9 +11,7 @@ scratch folder, so "data/..." resolves there instead of the real project.
 """
 import os
 import sqlite3
-
-import pandas as pd
-import pytest
+from contextlib import closing
 
 from src.services.database_service import load_csv_to_sqlite
 
@@ -62,7 +60,11 @@ def test_data_actually_lands_in_sqlite(tmp_data_dir, tmp_csv_file):
     """
     info = load_csv_to_sqlite(str(tmp_csv_file))
 
-    with sqlite3.connect(info["db_path"]) as conn:
+    # sqlite3.Connection's context manager only wraps the transaction
+    # (commit/rollback) — it does NOT close the connection on exit, which is
+    # exactly the bug the Phase 1b closing() fix targeted in the real code
+    # this test is verifying. closing() here actually closes it.
+    with closing(sqlite3.connect(info["db_path"])) as conn:
         cursor = conn.execute(f"SELECT COUNT(*) FROM {info['table_name']}")
         (count,) = cursor.fetchone()
 
@@ -93,7 +95,7 @@ def test_reloading_same_table_replaces_existing_data(tmp_data_dir, tmp_csv_file)
 
     info = load_csv_to_sqlite(str(tmp_csv_file))
 
-    with sqlite3.connect(info["db_path"]) as conn:
+    with closing(sqlite3.connect(info["db_path"])) as conn:
         cursor = conn.execute(f"SELECT COUNT(*) FROM {info['table_name']}")
         (count,) = cursor.fetchone()
 

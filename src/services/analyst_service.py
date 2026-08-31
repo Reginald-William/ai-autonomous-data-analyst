@@ -62,6 +62,16 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
     complexity = plan.get("complexity", "medium")
     reasoning = plan.get("reasoning", "")
 
+    # A chart-only plan has nothing to chart — ChartAgent only runs after
+    # python/sql have produced a result (see the "if chart ... and result is
+    # not None" guard below). Coerce it into a valid plan instead of letting
+    # result stay None all the way to the final AnalysisResponse(), which
+    # fails Pydantic validation (result: str, not Optional) — see
+    # docs/BUGS_FOUND.md #2.
+    if "chart" in agents and "python" not in agents and "sql" not in agents:
+        logger.warning(f"Chart-only plan from planner — adding 'python' so there's data to chart: {agents}")
+        agents = ["python"] + agents
+
     logger.info(f"Plan: task_type={task_type} | complexity={complexity} | agents={agents}")
 
     # If the planner determined the question is out of scope, return early
@@ -92,16 +102,28 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
     model_used = DEFAULT_MODEL
 
     attempts = 1
+    result_parts = []
     try:
         if "python" in agents:
             logger.info("Routing to Python agent")
-            result, attempts, model_used = python_agent.run(question, file_path, complexity)
+            python_result, attempts, model_used = python_agent.run(question, file_path, complexity)
             agents_used.append("python")
+            result_parts.append(python_result)
 
-        elif "sql" in agents:
+        if "sql" in agents:
             logger.info("Routing to SQL agent")
-            result, attempts, model_used = sql_agent.run(question, file_path, complexity, session_id=session_id, original_filename=original_filename)
+            sql_result, attempts, model_used = sql_agent.run(question, file_path, complexity, session_id=session_id, original_filename=original_filename)
             agents_used.append("sql")
+            result_parts.append(sql_result)
+
+        # A plan naming both python and sql previously ran python only (the
+        # dispatch used to be if/elif) — sql's result was silently dropped.
+        # See docs/BUGS_FOUND.md #1. Both now run independently; if both
+        # fired, label and concatenate so neither result is lost.
+        if len(result_parts) == 2:
+            result = f"Python result:\n{result_parts[0]}\n\nSQL result:\n{result_parts[1]}"
+        elif result_parts:
+            result = result_parts[0]
 
         if "chart" in agents and result is not None:
             logger.info("Routing to Chart agent")

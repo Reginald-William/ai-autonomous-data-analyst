@@ -3,10 +3,14 @@ Shared pytest fixtures. Anything defined here is automatically available to
 every test file under tests/ without needing an import — pytest finds this
 file by its special name and injects fixtures by matching argument names.
 """
+import json
 import shutil
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
+from src.main import app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEST_DATA_DIR = REPO_ROOT / "tests" / "data"
@@ -58,3 +62,106 @@ def tmp_csv_file(tmp_path, sample_csv_path):
     dest = tmp_path / "sample_data.csv"
     shutil.copy(sample_csv_path, dest)
     return dest
+
+
+class FakeGroqClient:
+    """
+    Stands in for a real Groq client in integration tests, via
+    build_agents(client=...) — the DI seam added in Phase 2. A single
+    request can trigger up to four distinct LLM calls in sequence (routing
+    plan, complexity classification, python/sql code generation, chart code
+    generation), each needing a different canned response — so instead of a
+    brittle ordered list of return values, this inspects the outgoing
+    prompt's content to decide which "kind" of call it's answering.
+
+    Configure per-test behavior via the `plan`, `complexity`, `code`, and
+    `sql` constructor args; anything not overridden falls back to a
+    reasonable default.
+    """
+
+    def __init__(self, plan=None, complexity="low", code=None, sql=None, chart_code=None):
+        self.plan = plan or {
+            "task_type": "analysis",
+            "agents": ["python"],
+            "reasoning": "fake plan for testing",
+        }
+        self.complexity = complexity
+        self.code = code or "print(df['revenue'].sum())"
+        self.sql = sql or "SELECT * FROM sample_data;"
+        self.chart_code = chart_code or (
+            "import matplotlib.pyplot as plt\n"
+            "plt.bar(['a'], [1])\n"
+            "plt.title('t')\n"
+            "plt.xlabel('x')\n"
+            "plt.ylabel('y')\n"
+            "plt.tight_layout()\n"
+        )
+        self.call_count = 0
+        self.chat = self  # so fake_client.chat.completions.create(...) resolves to self.completions
+        self.completions = self
+
+    def _prompt_text(self, messages) -> str:
+        return " ".join(m.get("content", "") for m in messages)
+
+    def create(self, model, messages, temperature=0.1, **kwargs):
+        self.call_count += 1
+        text = self._prompt_text(messages)
+
+        if "complexity classifier" in text.lower():
+            content = json.dumps({"complexity": self.complexity})
+        elif "planner for a data analysis system" in text.lower():
+            content = json.dumps(self.plan)
+        elif "sql expert" in text.lower():
+            content = self.sql
+        elif "visualization expert" in text.lower():
+            content = self.chart_code
+        else:
+            # python/sql code-generation prompts all mention pandas or "data analyst"
+            content = self.code
+
+        message = type("Message", (), {"content": content})()
+        choice = type("Choice", (), {"message": message})()
+        return type("Response", (), {"choices": [choice]})()
+
+
+@pytest.fixture
+def fake_groq_client():
+    """Default-configured FakeGroqClient — routes to the python agent with a
+    low-complexity plan and returns a simple revenue-sum answer. Use
+    FakeGroqClient(...) directly in a test when you need different plan,
+    complexity, code, or sql values."""
+    return FakeGroqClient()
+
+
+@pytest.fixture
+def api_client():
+    """
+    A FastAPI TestClient that does NOT trigger main.py's lifespan handler —
+    constructed without the `with TestClient(app) as client:` context
+    manager form, so startup/shutdown events never fire. This matters
+    because lifespan calls build_index("docs"), which loads a real
+    SentenceTransformer and builds a real FAISS index — exactly the ~35s
+    import-time-equivalent cost Phase 2 removed from the unit suite.
+
+    Routes work fine without it: rag_service.retrieve_context() already
+    handles an unbuilt index by returning "" (see rag_service.py), which
+    every agent prompt treats as just an empty "Additional business
+    context" section — not an error.
+    """
+    return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clean_sessions():
+    """
+    session_service keeps sessions in a plain module-level dict
+    (`_sessions`), not reset between tests. Autouse means this runs for
+    every single test automatically (no need to request it by name),
+    clearing that dict before and after each test so session state from one
+    test can never leak into another — e.g. a session_id created in one
+    upload test being unexpectedly still valid in a later expiry test.
+    """
+    from src.services import session_service
+    session_service._sessions.clear()
+    yield
+    session_service._sessions.clear()

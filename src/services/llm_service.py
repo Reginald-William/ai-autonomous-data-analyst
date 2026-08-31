@@ -1,11 +1,12 @@
-from dotenv import load_dotenv
-load_dotenv()
-
 from functools import lru_cache
+
+from dotenv import load_dotenv
 from groq import Groq
 import logging
 
 from src.config import get_settings
+
+load_dotenv()
 
 _settings = get_settings()
 

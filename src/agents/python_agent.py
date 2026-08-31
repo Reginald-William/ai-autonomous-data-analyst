@@ -1,6 +1,6 @@
 import logging
 import pandas as pd
-import sys
+from contextlib import redirect_stdout
 from io import StringIO
 from src.services.llm_service import get_llm_client, get_model_for_complexity, get_retry_budget, get_sample_rows, DEFAULT_MODEL
 from src.services.rag_service import retrieve_context
@@ -21,29 +21,29 @@ class PythonAgent:
     def execute_code(self, code: str, file_path: str) -> str:
         try:
             df = pd.read_csv(file_path)
-            
-            # Capture printed output
-            captured_output = StringIO()
-            sys.stdout = captured_output
-            
+
             # Create a safe environment with only df available
             safe_environment = {"df": df}
-                    
-            # Execute the generated code
-            exec(code, safe_environment)
-            
-            # Restore stdout
-            sys.stdout = sys.__stdout__
-            
+
+            # Capture printed output. redirect_stdout guarantees sys.stdout
+            # is restored on the way out of the `with` block even if exec()
+            # raises something except Exception below wouldn't catch (e.g.
+            # SystemExit) — a bare reassign-then-restore-in-except doesn't
+            # cover that, and under concurrent requests a raw `sys.stdout =`
+            # reassignment is a shared global that a second in-flight
+            # request could also be reassigning at the same time.
+            captured_output = StringIO()
+            with redirect_stdout(captured_output):
+                exec(code, safe_environment)
+
             output = captured_output.getvalue()
-            
+
             if not output:
                 raise Exception("Code executed successfully but produced no output. Make sure to print the final result.")
-            
+
             return output
 
         except Exception as e:
-            sys.stdout = sys.__stdout__
             logger.error(f"Code execution failed: {str(e)}")
             raise Exception(f"Execution error: {str(e)}")
 
