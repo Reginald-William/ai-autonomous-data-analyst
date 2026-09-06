@@ -55,6 +55,7 @@ testing?"
 | 2 | Config + DI refactor | `claude/v6.1-config-di` | 1 | Sep 2026 | ✅ Done |
 | 3 | API + integration tests, CI | `claude/v6.2-ci` | 1 | Sep 2026 | ✅ Done |
 | 4 | Dynamic data context | `claude/v6.3-data-context` | 1 | Sep 2026 | ⬜ |
+| 4b | User-supplied RAG context | `claude/v6.4-rag-context` | 1 | Sep 2026 | ⬜ |
 | 5 | Docker + Cloud Run + security | `claude/v7-deploy` | 2 | Sep–Oct 2026 | ⬜ |
 | 6 | Ingestion: source TBD → Parquet | `claude/v8-ingestion` | 1 | Oct 2026 | ⬜ |
 | 7 | dbt + BigQuery: staging → marts | `claude/v9-dbt-bigquery` | 2 | Oct 2026 | ⬜ |
@@ -306,15 +307,168 @@ sample_rows)` returns row/column counts, dtypes, unique counts, categorical valu
 unique), numeric ranges, null counts, sample rows. Pure pandas, no LLM call. Plus
 `tests/unit/test_data_context_service.py` (~12) over all six fixtures.
 
-**Modified:** `rag_service.py` gains `retrieve_routing_context()` (filters FAISS hits to
-`routing_rules.txt` only); `analyst_service.py` generates the context once and passes it to all
-agents (also removing several of the 7 redundant `pd.read_csv` calls); planner/python/sql
-agents accept `data_context`; `sql_agent` quotes column names (fixes the observed
-`WHERE Total Revenue > 10000` syntax error); `chart_agent` gets large-dataset prompt rules
-(fixes the observed cluttered charts).
+**Modified:** `analyst_service.py` generates the context once and passes it to all agents (also
+removing several of the 7 redundant `pd.read_csv` calls); planner/python/sql agents accept
+`data_context`; `sql_agent` quotes column names (fixes the observed `WHERE Total Revenue >
+10000` syntax error); `chart_agent` gets large-dataset prompt rules (fixes the observed
+cluttered charts).
+
+**RAG correction made mid-phase (2026-08-31):** while wiring the planner to a new
+`retrieve_routing_context()` helper, `routing_rules.txt`'s content turned out to be a
+near-total duplicate of rules already hardcoded directly in `planner_agent.py`'s and
+`python_agent.py`'s own prompts (same routing logic, same `pd.Grouper(freq='ME')` rule, worded
+slightly differently). Retrieving it added an embedding + FAISS search round-trip for text
+that changed nothing the LLM couldn't already see. **Decision: remove RAG-for-routing-rules
+entirely** — delete `docs/routing_rules.txt`, delete `retrieve_routing_context()`, keep only
+the hardcoded prompt rules as the single source of truth. This does not mean dropping RAG from
+the project — see Phase 4b below, which replaces this with a RAG use case that's actually
+load-bearing (user-supplied documents, unknowable at build time, genuinely too large to
+hardcode).
 
 **Done when:** questions on `tests/data/employees.csv` and `stocks.csv` route to an agent
 instead of returning out-of-scope.
+
+### Chart agent redesign (added mid-phase, 2026-09-02): chart spec, not chart code
+
+The originally-planned "large-dataset prompt rules" fix for `chart_agent` (cap at top-15
+categories, conditionally add value labels) was implemented first as more prompt instructions,
+and immediately proved the fragility of that whole approach. Concretely, on
+`tests/data/large_sales.csv` (1000 rows, 652 unique dates): the first version of the fix
+produced a chart where several close-valued bars' labels rendered on top of each other
+(illegible, doubled text). Adding a rule to detect close values and suppress labels in that
+case *fixed the label collision* but caused a **new, unrelated crash** — the model, now
+juggling more instructions, decided to re-parse the (already-usable) computed-result string
+via `pd.read_csv(io.StringIO(...), delim_whitespace=True)` instead of using it directly, and
+`delim_whitespace` doesn't exist in the pandas version pinned in `requirements.txt`. This
+crashed inside `chart_agent.run()`'s single `try/except` (chart_agent has no retry loop,
+unlike python/sql agents), surfacing as `status: "failed"` with `agents_used: ['python']` —
+the chart agent had run and failed, not "not been detected," but the response made that hard
+to tell apart.
+
+**The lesson, stated plainly: every instruction added to a prompt that asks an LLM to write and
+execute a full program from scratch is a new opportunity for a new failure mode.** Matplotlib
+wasn't the problem — asking an LLM to freely author charting *code*, then `exec()` it, on every
+single request, is. More rules on top of that pattern trade one bug for another rather than
+converging on correctness.
+
+**Decision: redesign `chart_agent` from "LLM writes matplotlib code" to "LLM picks a small,
+structured chart spec; hand-written, deterministic code renders it."**
+
+- The LLM's job shrinks to producing something like `{"chart_type": "bar", "x_column": ...,
+  "y_column": ..., "title": ...}` — a low-variance decision, not a program.
+- All the fragile mechanics — top-N category selection, close-value label suppression,
+  rotation/offset, `tight_layout()`, file saving — move into hand-written Python in
+  `chart_agent.py` itself, executed identically every time, unit-testable the same way
+  `data_context_service.py` is, never regenerated per-request.
+- This directly serves "don't bloat the prompt": the chart prompt shrinks (no matplotlib API
+  instructions needed at all), while correctness improves, since the parts that must always
+  work correctly are no longer subject to LLM variance.
+- It also structurally prevents the `delim_whitespace` bug and the label-collision bug at the
+  same time: deterministic code computes top-N and label-spacing directly from the real
+  dataframe/SQL result object, never by re-parsing a truncated `print()` string.
+- Matplotlib stays the renderer for now (matches the current PNG-returning API); see Phase 12
+  for the Plotly-if-Streamlit-lands note — library choice stops being LLM-exposed either way
+  once this redesign lands.
+
+### Open follow-up: complexity tiering lost its third lever (not yet resolved)
+
+Removing `python_agent.get_csv_context()` in favor of the shared `data_context` (generated
+once by `data_context_service.py` with a fixed `sample_rows=5`, not complexity-scaled) made
+`get_sample_rows()`/`PROMPT_SAMPLE_ROWS`/`Settings.prompt_sample_rows_*` genuinely dead code —
+nothing calls `get_sample_rows()` anymore. Before this phase, complexity drove three things:
+model tier, retry budget, and prompt richness (`sample_rows`, more example rows for harder
+questions). `CLAUDE.md`'s Configuration section still claims all three; that claim is now
+stale.
+
+**Why this isn't just "delete the dead code and move on":** with `MODEL_ROUTING["medium"] ==
+MODEL_ROUTING["high"]` already (both `gpt-oss-120b`, forced by Phase 1's Llama-retirement
+remap), losing the `sample_rows` lever too would leave **retry budget as the only real
+difference** between medium and high complexity — a thin justification for the whole tiering
+system. Retry budget only helps after a first attempt already failed; it doesn't change what
+the model can reason about on attempt one, which is what "complexity" is supposed to capture.
+
+**Also worth naming honestly: the old `sample_rows` lever was never doing much either.** More
+example rows in the "Sample rows" section doesn't give the model more *reasoning* capacity for
+a genuinely multi-step question ("which region is growing fastest") — `data_context_service`
+already surfaces the full categorical/numeric picture regardless of complexity; sample rows are
+just a "here's what a row looks like" illustration. Restoring it would stop the dead-code
+problem without actually fixing the thin-justification problem.
+
+**Proposed alternative (not yet implemented) — tier the task instructions, not just the
+surrounding context:** add complexity-scaled *reasoning scaffolding* to
+`python_agent.generate_code()`/`sql_agent.generate_sql()`'s prompts. For `high` complexity
+only, add an instruction like "before writing code, list the intermediate values you need to
+compute, in order, then compute and print each step explicitly, not just the final answer" —
+changing what the model actually *does* on a hard question, not just how many chances it gets
+or how many example rows it sees. `low`/`medium` keep today's direct-answer prompt style
+(scaffolding would be unnecessary token overhead against the 8K TPM ceiling for a
+single-metric question). This costs *fewer* extra tokens on low/medium (no scaffolding
+instruction) rather than more on high (bigger sample block) — a better fit for the tight TPM
+budget than the old lever. A secondary, more surgical idea: raise `sample_rows` for `high`
+only when the dataset has date/time structure and the question is trend-shaped, rather than
+blanket-more-rows-for-high regardless of relevance.
+
+**Decision:** deferred — agreed to finish Phase 4's originally-planned scope first (this
+section), then revisit this as a deliberate follow-up rather than expanding scope mid-phase.
+When picked up: implement the tiered-instruction approach, delete the now-dead
+`get_sample_rows`/`PROMPT_SAMPLE_ROWS`/`prompt_sample_rows_*` fields (and their tests in
+`test_config.py`/`test_llm_service.py`), and correct `CLAUDE.md`'s "prompt richness" claim to
+something like "prompt reasoning depth."
+
+---
+
+## Phase 4b — User-supplied RAG context ⬜
+
+**Branch:** `claude/v6.4-rag-context` · **1 weekend**
+
+### Why this phase exists
+
+Phase 4 found that the project's only RAG use case (`docs/routing_rules.txt`, retrieved for
+every planning call) was decorative — its content duplicated rules already hardcoded in
+`planner_agent.py`/`python_agent.py`'s own prompts, so removing the retrieval call changed
+nothing the LLM saw. That's the wrong shape of problem for RAG: a small, developer-authored,
+rarely-changing file fits trivially inline in a prompt and gains nothing from
+chunk-embed-retrieve. **RAG earns its place when the corpus is too large to inline, changes
+independently of code, and is supplied by someone other than the developer** — none of which
+was true of `routing_rules.txt`.
+
+This phase gives the project a RAG use case that actually satisfies those three conditions:
+**user-supplied business context, uploaded alongside a CSV.** A user who understands their own
+data (e.g. "in our pipeline, 'won' means closed-deal," "fiscal year starts in April," a column
+glossary) can upload a `.txt`/`.md` document describing it — text a developer could never
+pre-write, that can genuinely run to multiple pages, and where only the chunks relevant to the
+*specific question being asked* should be pulled into a prompt rather than the whole document
+every time. This is also the direction the project's Phase 5 Docker-size tradeoff assumed would
+either shrink to nothing or stay real — this phase settles it: RAG stays real, so Phase 5 needs
+a lighter-weight embedding stack (see Phase 5's updated note), not RAG removal.
+
+### Added
+
+- **Upload path**: `POST /upload` gains an optional second file field (e.g. `context_file`) —
+  or a dedicated `POST /upload/context` tied to an existing `session_id` — accepting a
+  plain-text or Markdown document. No file is required; nothing changes for a session that
+  doesn't provide one.
+- **Per-session RAG index**: `RagIndex` (today a single process-wide singleton built once at
+  startup from `docs/`) needs a per-session instance built on demand only when a context
+  document is actually uploaded — analogous to how `session_service` already isolates each
+  session's CSV by `session_id`. A user's business-context document must never leak into
+  another session's questions.
+- **`retrieve_session_context(session_id, question)`** in `rag_service.py` (or equivalent) —
+  looks up the requesting session's own index (if one exists) and retrieves the chunks nearest
+  to the question, the same nearest-neighbor mechanics `RagIndex.retrieve_context()` already
+  has, just scoped per-session instead of global.
+- Agents (likely python/sql, possibly the planner) accept this retrieved context alongside the
+  Phase 4 `data_context`, the same additive, backward-compatible parameter pattern used
+  throughout this project (default `""`, no session doc → no behavior change).
+
+### Removed (carried over from the Phase 4 correction above)
+
+- `docs/routing_rules.txt`, `retrieve_routing_context()` — already deleted in Phase 4; this
+  phase doesn't reintroduce them.
+
+**Done when:** a session that uploads a context document alongside its CSV gets answers that
+correctly incorporate that document's content for a question it's actually relevant to, and a
+session that doesn't upload one behaves exactly as before (no regression, no required field).
 
 ---
 
@@ -340,11 +494,16 @@ instead of returning out-of-scope.
 `torch` + `sentence-transformers` + `faiss-cpu` is ~2.5 GB installed; a naive image is ~3.5 GB.
 Artifact Registry's free tier is **0.5 GB**.
 
-**Open question to decide here:** after Phase 4, RAG retrieves from one 3 KB file
-(`routing_rules.txt`). Inlining those rules into the prompt removes 2.5 GB of dependencies and
-most of this problem. *"I removed a 2.5 GB dependency that served a 3 KB corpus"* is a stronger
-engineering story than *"I built a RAG pipeline"*, and the RAG work stays in git history.
-Alternatives: ONNX embeddings (~90 MB), or precompute the index at build time.
+**Resolved in Phase 4/4b — RAG stays, the embedding stack shrinks.** The original framing here
+assumed RAG would settle into retrieving one static 3 KB file (`routing_rules.txt`), in which
+case deleting RAG entirely and inlining that file was the obvious move. Phase 4 found that use
+case was decorative (the file duplicated rules already hardcoded in agent prompts) and removed
+it — but Phase 4b replaces it with a real RAG use case (user-supplied, per-session business
+context documents) that's genuinely too large and too variable to inline. So the Docker-size
+fix here is **ONNX embeddings (~90 MB) instead of `sentence-transformers`+`torch`** — keeps
+real retrieval capability, drops ~2.4 GB. "Precompute the index at build time" is no longer
+viable either way, since Phase 4b's documents don't exist until a user uploads them at
+runtime.
 
 **Done when:** public HTTPS URL answers a question; image <1.5 GB; `/ask` rejects traversal.
 
@@ -505,6 +664,18 @@ box; result + chart; and a sidebar showing which agents ran, the complexity tier
 and attempt count. **That sidebar is the demo's real value** — it makes the orchestration
 visible.
 
+**Open idea to revisit here — Plotly instead of matplotlib for charts, if the chart-spec
+redesign (Phase 4) lands first:** matplotlib only produces static PNGs, matching today's
+JSON-API `chart_path` contract (`AnalysisResponse.chart_path: Optional[str]`) — there's no
+browser rendering surface for interactivity anywhere in the app before this phase. Streamlit
+*can* natively render an interactive Plotly figure (`st.plotly_chart()`), so once a real UI
+surface exists, swapping the chart-spec renderer from matplotlib to Plotly becomes a
+low-risk, purely mechanical choice — by that point the LLM only ever produces a small chart
+spec (chart type + columns + title), not charting code, so which library actually draws the
+chart is an implementation detail, not something exposed to LLM variance. Decide at this
+phase whether the interactivity (hover tooltips, zoom, pan) is worth the extra dependency
+weight for a portfolio demo; not worth pursuing for the current PNG-returning API alone.
+
 ---
 
 ## Phase 13 — Polish ⬜
@@ -514,6 +685,19 @@ visible.
 Architecture diagram, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (an ADR log — rare and
 genuinely impressive), README rewrite with both framings, CI + coverage badges. Move
 `src/groq_all_models.py` to `scripts/` or delete it.
+
+**Candidate pickup — chart data fidelity (deferred from Phase 4):** `docs/BUGS_FOUND.md`
+findings #10-#12 — chart aggregation can silently render sums where an average was correctly
+computed, SQL-filtered chart questions can silently mix in rows the filter excluded, and
+scatter charts over-aggregate instead of showing per-row spread. All three share one root
+cause (`chart_agent` re-derives data from the raw file instead of consuming what python/sql
+already computed) and one proposed fix, already scoped in that doc: reuse the SQL agent's
+query string for SQL-routed charts (cheap, safe, fixes #11 fully), and for python-routed
+charts, stop the duplicate-detection fallback from overriding an explicit aggregation choice
+and skip grouping for scatter (fixes #10/#12, though not with the same full-fidelity guarantee
+SQL-reuse gives). Deliberately deferred past Phase 4 since it's a secondary/decorative feature
+and Phase 4's actual done-criterion (dataset-agnostic routing) doesn't depend on it — revisit
+here, or sooner if convenient.
 
 ---
 

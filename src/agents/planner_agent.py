@@ -1,7 +1,6 @@
 import logging
 import json
 from src.services.llm_service import get_llm_client, DEFAULT_MODEL, MODEL_ROUTING
-from src.services.rag_service import retrieve_context
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +51,16 @@ class PlannerAgent:
         logger.info(f"Complexity classified as: {complexity}")
         return complexity
 
-    def run(self, question: str, row_count: int = 0) -> dict:
+    def run(self, question: str, row_count: int = 0, data_context: str = "") -> dict:
         logger.info(f"Planner agent analyzing question: {question}")
 
-        rag_context = retrieve_context(question)
-
+        # data_context is generated fresh per uploaded file by
+        # data_context_service.py (Phase 4) — this replaces the old
+        # hardcoded TechMart business_context/data_dictionary RAG docs,
+        # which is why "cannot be answered" false-out-of-scope rejections
+        # happened on any CSV that wasn't TechMart's own sample data: the
+        # planner was reading facts about a dataset that wasn't the one
+        # actually uploaded.
         routing_prompt = f"""
         You are a planner for a data analysis system.
         You have these specialized agents available:
@@ -71,9 +75,10 @@ class PlannerAgent:
         - If the question asks for calculations, totals, averages, comparisons — use "python"
         - If the question needs both computation and visualization — use ["python", "chart"]
         - If the question is about general world knowledge, external facts, or topics completely unrelated to the data (e.g. weather, geography, people, news) — use "none"
+        - Only use "none" when the question is unrelated to data analysis in general — never because a specific value (e.g. a category, name, or id) isn't one you recognize. The actual dataset below is authoritative; trust it over any assumption.
 
-        Additional context:
-        {rag_context}
+        The actual uploaded dataset looks like this:
+        {data_context}
 
         Based on the user question, decide which agents to use and in what order.
 

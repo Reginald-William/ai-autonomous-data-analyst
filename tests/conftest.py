@@ -41,6 +41,26 @@ def large_sales_csv_path() -> Path:
 
 
 @pytest.fixture
+def missing_values_csv_path() -> Path:
+    """Path to a CSV with null values scattered across multiple columns."""
+    return TEST_DATA_DIR / "missing_values.csv"
+
+
+@pytest.fixture
+def employees_csv_path() -> Path:
+    """Path to a non-sales CSV (name/age/department/salary/hire_date/city) —
+    used to prove the app works on datasets that aren't TechMart sales data."""
+    return TEST_DATA_DIR / "employees.csv"
+
+
+@pytest.fixture
+def stocks_csv_path() -> Path:
+    """Path to a non-sales CSV (date/ticker/open/close/volume) — used to
+    prove the app works on datasets that aren't TechMart sales data."""
+    return TEST_DATA_DIR / "stocks.csv"
+
+
+@pytest.fixture
 def tmp_data_dir(tmp_path, monkeypatch):
     """
     Redirects the app's file operations into a throwaway temp folder instead
@@ -79,7 +99,7 @@ class FakeGroqClient:
     reasonable default.
     """
 
-    def __init__(self, plan=None, complexity="low", code=None, sql=None, chart_code=None):
+    def __init__(self, plan=None, complexity="low", code=None, sql=None, chart_spec=None):
         self.plan = plan or {
             "task_type": "analysis",
             "agents": ["python"],
@@ -88,14 +108,15 @@ class FakeGroqClient:
         self.complexity = complexity
         self.code = code or "print(df['revenue'].sum())"
         self.sql = sql or "SELECT * FROM sample_data;"
-        self.chart_code = chart_code or (
-            "import matplotlib.pyplot as plt\n"
-            "plt.bar(['a'], [1])\n"
-            "plt.title('t')\n"
-            "plt.xlabel('x')\n"
-            "plt.ylabel('y')\n"
-            "plt.tight_layout()\n"
-        )
+        # chart_agent.py's redesign (Phase 4) has the LLM pick a small JSON
+        # spec, not write matplotlib code — see ChartAgent._get_chart_spec.
+        self.chart_spec = chart_spec or json.dumps({
+            "chart_type": "bar",
+            "x_column": "region",
+            "y_column": "revenue",
+            "aggregation": "sum",
+            "title": "Revenue by Region",
+        })
         self.call_count = 0
         self.chat = self  # so fake_client.chat.completions.create(...) resolves to self.completions
         self.completions = self
@@ -114,7 +135,7 @@ class FakeGroqClient:
         elif "sql expert" in text.lower():
             content = self.sql
         elif "visualization expert" in text.lower():
-            content = self.chart_code
+            content = self.chart_spec
         else:
             # python/sql code-generation prompts all mention pandas or "data analyst"
             content = self.code

@@ -14,7 +14,7 @@ class SQLAgent:
         self.model = DEFAULT_MODEL
         self.max_attempts = 3
 
-    def generate_sql(self, question: str, db_info: dict, rag_context: str = "") -> str:
+    def generate_sql(self, question: str, db_info: dict, data_context: str = "", rag_context: str = "") -> str:
         schema = f"Table: {db_info['table_name']}\n"
         schema += f"Columns: {db_info['columns']}\n"
         schema += f"Row count: {db_info['row_count']}"
@@ -24,6 +24,9 @@ class SQLAgent:
 
         {schema}
 
+        The underlying dataset looks like this:
+        {data_context}
+
         Additional business context:
         {rag_context}
 
@@ -32,6 +35,8 @@ class SQLAgent:
         Write a SQLite SQL query to answer this question.
         Return only the SQL query, nothing else.
         Do not include any explanation or markdown.
+        Always double-quote column names in the query (e.g. "Total Revenue"), since column
+        names may contain spaces or other characters that are invalid as bare SQL identifiers.
         """
 
         response = self.client.chat.completions.create(
@@ -45,7 +50,7 @@ class SQLAgent:
 
         return response.choices[0].message.content.strip()
 
-    def fix_sql(self, question: str, failed_sql: str, error: str, db_info: dict, rag_context: str = "") -> str:
+    def fix_sql(self, question: str, failed_sql: str, error: str, db_info: dict, data_context: str = "", rag_context: str = "") -> str:
         schema = f"Table: {db_info['table_name']}\n"
         schema += f"Columns: {db_info['columns']}\n"
 
@@ -53,6 +58,9 @@ class SQLAgent:
         You are a SQL expert. You have access to a SQLite database with the following schema:
 
         {schema}
+
+        The underlying dataset looks like this:
+        {data_context}
 
         Additional business context:
         {rag_context}
@@ -66,6 +74,8 @@ class SQLAgent:
         {error}
 
         Fix the SQL and return only the corrected query, nothing else.
+        Always double-quote column names in the query (e.g. "Total Revenue"), since column
+        names may contain spaces or other characters that are invalid as bare SQL identifiers.
         """
 
         response = self.client.chat.completions.create(
@@ -105,7 +115,7 @@ class SQLAgent:
     def clean_sql(self, sql: str) -> str:
       return sql.replace("```sql", "").replace("```", "").strip()
     
-    def run(self, question: str, file_path: str, complexity: str = "medium", session_id: str = None, original_filename: str = None) -> tuple[str, int, str]:
+    def run(self, question: str, file_path: str, complexity: str = "medium", session_id: str = None, original_filename: str = None, data_context: str = "") -> tuple[str, int, str]:
         self.model = get_model_for_complexity(complexity)
         self.max_attempts = get_retry_budget(complexity)
         logger.info(f"SQL agent running for question: {question} | complexity={complexity} | model={self.model} | max_attempts={self.max_attempts}")
@@ -113,7 +123,7 @@ class SQLAgent:
         db_info = load_csv_to_sqlite(file_path, session_id=session_id, original_filename=original_filename)
         rag_context = retrieve_context(question)
 
-        sql = self.generate_sql(question, db_info, rag_context)
+        sql = self.generate_sql(question, db_info, data_context, rag_context)
         sql = self.clean_sql(sql)
         logger.info(f"Generated SQL:\n{sql}")
 
@@ -131,6 +141,6 @@ class SQLAgent:
                 if attempt == self.max_attempts:
                     raise Exception(f"SQL agent failed after {self.max_attempts} attempts: {str(e)}")
 
-                sql = self.fix_sql(question, sql, str(e), db_info, rag_context)
+                sql = self.fix_sql(question, sql, str(e), db_info, data_context, rag_context)
                 sql = self.clean_sql(sql)
                 attempt += 1

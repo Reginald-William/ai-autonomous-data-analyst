@@ -1,9 +1,11 @@
 """
 Tests for the clean_code / clean_sql helpers that strip markdown code-fence
-formatting off LLM output before it gets exec'd or run as SQL. There are
-three near-identical copies of this logic — PythonAgent.clean_code,
-ChartAgent.clean_code, and SQLAgent.clean_sql — so each gets its own set of
-parametrized cases.
+formatting off LLM output before it gets exec'd or run as SQL. PythonAgent
+and SQLAgent still have their own near-identical copies of this logic, so
+each gets its own set of parametrized cases. ChartAgent no longer has a
+clean_code method — its Phase 4 redesign has the LLM return a small JSON
+chart spec (parsed via json.loads), not code to be exec'd, so there's
+nothing to strip code fences from.
 
 Building an agent instance (e.g. PythonAgent()) does construct a Groq client
 via get_llm_client(), same as importing llm_service directly — but no
@@ -13,7 +15,6 @@ fast and offline.
 import pytest
 
 from src.agents.python_agent import PythonAgent
-from src.agents.chart_agent import ChartAgent
 from src.agents.sql_agent import SQLAgent
 
 
@@ -37,12 +38,6 @@ SQL_CASES = [
 @pytest.mark.parametrize("raw, expected", CODE_CASES)
 def test_python_agent_clean_code(raw, expected):
     agent = PythonAgent()
-    assert agent.clean_code(raw) == expected
-
-
-@pytest.mark.parametrize("raw, expected", CODE_CASES)
-def test_chart_agent_clean_code(raw, expected):
-    agent = ChartAgent()
     assert agent.clean_code(raw) == expected
 
 

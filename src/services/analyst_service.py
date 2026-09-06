@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import uuid4
 from fastapi import HTTPException
 from src.services.llm_service import DEFAULT_MODEL
+from src.services.data_context_service import generate_data_context
 from src.agents.planner_agent import PlannerAgent
 from src.agents.python_agent import PythonAgent
 from src.agents.sql_agent import SQLAgent
@@ -56,7 +57,15 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
         logger.error(f"CSV file not found: {file_path}")
         raise HTTPException(status_code=404, detail=f"CSV file not found: {file_path}")
 
-    plan = planner.run(question, row_count)
+    # Computed once here and passed to every agent below, instead of each
+    # agent separately re-reading the CSV to build its own lightweight
+    # summary (Phase 4 — was one of 7 redundant pd.read_csv calls per
+    # request; see PHASES.md). This is also what replaced the hardcoded
+    # TechMart RAG docs that caused any non-TechMart CSV to get incorrectly
+    # ruled out of scope — see docs/BUGS_FOUND.md and PHASES.md Phase 4.
+    data_context = generate_data_context(file_path)
+
+    plan = planner.run(question, row_count, data_context)
     agents = plan.get("agents", ["python"])
     task_type = plan.get("task_type", "analysis")
     complexity = plan.get("complexity", "medium")
@@ -106,13 +115,13 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
     try:
         if "python" in agents:
             logger.info("Routing to Python agent")
-            python_result, attempts, model_used = python_agent.run(question, file_path, complexity)
+            python_result, attempts, model_used = python_agent.run(question, file_path, complexity, data_context)
             agents_used.append("python")
             result_parts.append(python_result)
 
         if "sql" in agents:
             logger.info("Routing to SQL agent")
-            sql_result, attempts, model_used = sql_agent.run(question, file_path, complexity, session_id=session_id, original_filename=original_filename)
+            sql_result, attempts, model_used = sql_agent.run(question, file_path, complexity, session_id=session_id, original_filename=original_filename, data_context=data_context)
             agents_used.append("sql")
             result_parts.append(sql_result)
 
@@ -127,7 +136,7 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
 
         if "chart" in agents and result is not None:
             logger.info("Routing to Chart agent")
-            chart_path = chart_agent.run(question, result, file_path, complexity, session_id=session_id)
+            chart_path = chart_agent.run(question, result, file_path, complexity, session_id=session_id, data_context=data_context)
             agents_used.append("chart")
 
     except Exception as e:
