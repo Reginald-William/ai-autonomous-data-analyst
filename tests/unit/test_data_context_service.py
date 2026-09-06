@@ -9,8 +9,6 @@ high-cardinality columns never get a misleading partial value list.
 """
 import logging
 
-import pytest
-
 from src.services.data_context_service import (
     CATEGORICAL_UNIQUE_THRESHOLD,
     _build_context_dict,
