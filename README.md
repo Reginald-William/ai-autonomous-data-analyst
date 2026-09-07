@@ -129,6 +129,7 @@ curl -X POST http://localhost:8000/ask \
     "agents_used": ["python"],
     "task_type": "analysis",
     "reasoning": "question asks for calculation so python agent is used",
+    "complexity": "low",
     "chart_path": null,
     "session_id": "7455452f-f6be-4770-93d9-f24186779432"
 }

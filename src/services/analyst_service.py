@@ -101,6 +101,7 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
             agents_used=[],
             task_type=task_type,
             reasoning=reasoning,
+            complexity=complexity,
             chart_path=None,
             session_id=session_id
         )
@@ -156,6 +157,7 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
             agents_used=agents_used,
             task_type=task_type,
             reasoning=reasoning,
+            complexity=complexity,
             chart_path=chart_path,
             session_id=session_id
         )
@@ -177,6 +179,7 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
         agents_used=agents_used,
         task_type=task_type,
         reasoning=reasoning,
+        complexity=complexity,
         chart_path=chart_path,
         session_id=session_id
     )

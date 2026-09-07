@@ -9,6 +9,25 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Added for "high" complexity only (see run()). Complexity used to also
+# scale how many sample rows appeared in the prompt (PROMPT_SAMPLE_ROWS),
+# but that lever died when data_context_service.py replaced the per-agent
+# CSV peek with a fixed-size shared context (Phase 4) — leaving retry
+# budget as the only thing that differed between medium and high, which
+# only helps after a first attempt already failed. This scaffolding
+# targets the actual gap: first-attempt reasoning quality on genuinely
+# multi-step questions (the ones complexity=high is meant to describe),
+# not just how many retries they get.
+HIGH_COMPLEXITY_SCAFFOLDING = """
+        This question requires combining multiple computations (e.g. trend over time,
+        comparison across dimensions, or a multi-step calculation). Before writing the final
+        code: identify each intermediate value you need and the order you need them in. Write
+        code that computes and prints each intermediate step as well as the final answer, not
+        just the final answer alone — this makes it possible to tell which step is wrong if the
+        result looks incorrect.
+        """
+
+
 class PythonAgent:
     def __init__(self, client=None):
         self.client = client if client is not None else get_llm_client()
@@ -47,7 +66,7 @@ class PythonAgent:
             logger.error(f"Code execution failed: {str(e)}")
             raise Exception(f"Execution error: {str(e)}")
 
-    def generate_code(self, question: str, data_context: str = "", rag_context: str = "") -> str:
+    def generate_code(self, question: str, data_context: str = "", rag_context: str = "", complexity: str = "medium") -> str:
         prompt = f"""
         You are a data analyst. You have access to a CSV file with the following structure:
 
@@ -57,7 +76,7 @@ class PythonAgent:
         {rag_context}
 
         The user is asking: {question}
-
+        {HIGH_COMPLEXITY_SCAFFOLDING if complexity == "high" else ""}
         Write Python code using pandas to answer this question.
         Always write actual Python code, never answer the question directly.
         Even if the answer seems simple, always write Python code to compute it.
@@ -92,7 +111,7 @@ class PythonAgent:
             logger.error(f"Groq API call failed: {str(e)}")
             raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
 
-    def fix_code(self, question: str, failed_code: str, error: str, data_context: str = "", rag_context: str = "") -> str:
+    def fix_code(self, question: str, failed_code: str, error: str, data_context: str = "", rag_context: str = "", complexity: str = "medium") -> str:
         prompt = f"""
         You are a data analyst. You have access to a CSV file with the following structure:
 
@@ -100,15 +119,15 @@ class PythonAgent:
 
         Additional business context:
         {rag_context}
-        
+
         The user is asking: {question}
-        
+
         You previously generated this code:
         {failed_code}
-        
+
         But it failed with this error:
         {error}
-        
+        {HIGH_COMPLEXITY_SCAFFOLDING if complexity == "high" else ""}
         Fix the code and return only the corrected Python code, nothing else.
         The dataframe is already loaded as 'df'.
         Always print the final result using print().
@@ -143,7 +162,7 @@ class PythonAgent:
         logger.info(f"Python agent running for question: {question} | complexity={complexity} | model={self.model} | max_attempts={self.max_attempts}")
 
         rag_context = retrieve_context(question)
-        generated_code = self.clean_code(self.generate_code(question, data_context, rag_context))
+        generated_code = self.clean_code(self.generate_code(question, data_context, rag_context, complexity))
         logger.info(f"Generated code:\n{generated_code}")
 
         attempt = 1
@@ -160,5 +179,5 @@ class PythonAgent:
                 if attempt == self.max_attempts:
                     raise Exception(f"Python agent failed after {self.max_attempts} attempts: {str(e)}")
 
-                generated_code = self.clean_code(self.fix_code(question, generated_code, str(e), data_context, rag_context))
+                generated_code = self.clean_code(self.fix_code(question, generated_code, str(e), data_context, rag_context, complexity))
                 attempt += 1

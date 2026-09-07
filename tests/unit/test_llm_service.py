@@ -55,22 +55,6 @@ def test_get_retry_budget_falls_back_to_medium_for_unknown_key():
     assert llm_service.get_retry_budget("nonsense") == llm_service.RETRY_BUDGET["medium"]
 
 
-@pytest.mark.parametrize(
-    "complexity, expected_rows",
-    [
-        ("low", 3),
-        ("medium", 5),
-        ("high", 10),
-    ],
-)
-def test_get_sample_rows_returns_expected_row_count(complexity, expected_rows):
-    assert llm_service.get_sample_rows(complexity) == expected_rows
-
-
-def test_get_sample_rows_falls_back_to_medium_for_unknown_key():
-    assert llm_service.get_sample_rows("nonsense") == llm_service.PROMPT_SAMPLE_ROWS["medium"]
-
-
 def test_all_configured_models_are_confirmed_live():
     """
     Regression guard for the incident this phase started from: all three

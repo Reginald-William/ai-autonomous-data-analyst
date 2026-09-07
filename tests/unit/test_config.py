@@ -88,13 +88,6 @@ def test_retry_budget_property_matches_individual_fields(monkeypatch, tmp_path):
     assert settings.retry_budget == {"low": 2, "medium": 3, "high": 5}
 
 
-def test_prompt_sample_rows_property_matches_individual_fields(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    settings = Settings()
-
-    assert settings.prompt_sample_rows == {"low": 3, "medium": 5, "high": 10}
-
-
 def test_get_settings_returns_same_cached_instance():
     """lru_cache means get_settings() constructs Settings() once per process
     and hands back the identical object on every later call."""

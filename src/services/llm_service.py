@@ -21,10 +21,9 @@ MODEL_ROUTING = _settings.model_routing
 
 # With only two usable models, "medium" and "high" now share a model ID.
 # Complexity still needs to mean something, so it also drives retry budget
-# and how much of the dataset gets sampled into the prompt.
+# and (for "high" only) reasoning-scaffolding prompt instructions in
+# python_agent.py/sql_agent.py — see HIGH_COMPLEXITY_SCAFFOLDING there.
 RETRY_BUDGET = _settings.retry_budget
-
-PROMPT_SAMPLE_ROWS = _settings.prompt_sample_rows
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +41,3 @@ def get_model_for_complexity(complexity: str) -> str:
 
 def get_retry_budget(complexity: str) -> int:
     return RETRY_BUDGET.get(complexity, RETRY_BUDGET["medium"])
-
-def get_sample_rows(complexity: str) -> int:
-    return PROMPT_SAMPLE_ROWS.get(complexity, PROMPT_SAMPLE_ROWS["medium"])

@@ -370,7 +370,7 @@ structured chart spec; hand-written, deterministic code renders it."**
   for the Plotly-if-Streamlit-lands note — library choice stops being LLM-exposed either way
   once this redesign lands.
 
-### Open follow-up: complexity tiering lost its third lever (not yet resolved)
+### Complexity tiering lost its third lever — resolved (2026-09-04)
 
 Removing `python_agent.get_csv_context()` in favor of the shared `data_context` (generated
 once by `data_context_service.py` with a fixed `sample_rows=5`, not complexity-scaled) made
@@ -408,12 +408,21 @@ budget than the old lever. A secondary, more surgical idea: raise `sample_rows` 
 only when the dataset has date/time structure and the question is trend-shaped, rather than
 blanket-more-rows-for-high regardless of relevance.
 
-**Decision:** deferred — agreed to finish Phase 4's originally-planned scope first (this
-section), then revisit this as a deliberate follow-up rather than expanding scope mid-phase.
-When picked up: implement the tiered-instruction approach, delete the now-dead
-`get_sample_rows`/`PROMPT_SAMPLE_ROWS`/`prompt_sample_rows_*` fields (and their tests in
-`test_config.py`/`test_llm_service.py`), and correct `CLAUDE.md`'s "prompt richness" claim to
-something like "prompt reasoning depth."
+**Implemented:** the tiered-instruction approach, exactly as proposed above.
+`python_agent.py` gained `HIGH_COMPLEXITY_SCAFFOLDING` (asks the model to list intermediate
+values and print each step, not just the final answer); `sql_agent.py` gained
+`HIGH_COMPLEXITY_SQL_SCAFFOLDING` (asks the model to use a CTE/subquery to make each step of a
+multi-step query verifiable). Both are spliced into `generate_code()`/`fix_code()` and
+`generate_sql()`/`fix_sql()`'s prompts only when `complexity == "high"` — `low`/`medium`
+prompts are byte-for-byte unchanged. Placement matters: the scaffolding sits right after the
+question (or, in `fix_code()`/`fix_sql()`, right after the error) and *before* the mechanical
+formatting rules (print statements, date parsing, column quoting) — burying a "think through
+the approach first" instruction after a checklist of syntax reminders risked the model treating
+it as just another minor rule instead of the framing instruction it's meant to be.
+
+The now-dead `get_sample_rows()`/`PROMPT_SAMPLE_ROWS`/`prompt_sample_rows_*` were deleted from
+`llm_service.py`/`config.py`, along with their tests in `test_config.py`/`test_llm_service.py`.
+`CLAUDE.md`'s "prompt richness" claim corrected to describe the scaffolding mechanism instead.
 
 ---
 

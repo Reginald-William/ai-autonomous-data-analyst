@@ -166,8 +166,14 @@ previously hardcoded, so no `.env` changes are required after this refactor.
 from Groq. The only usable free-tier text models are `openai/gpt-oss-20b` (fast/cheap) and
 `openai/gpt-oss-120b` (strongest). Because two tiers must share one model, **tiering means more
 than model identity**: complexity drives model *and* retry budget (`Settings.retry_budget`)
-*and* prompt richness (`Settings.prompt_sample_rows`). This keeps the two-call planner and the
-500-row threshold meaningful.
+*and*, for `high` complexity only, reasoning-scaffolding prompt instructions in
+`python_agent.py`/`sql_agent.py` (`HIGH_COMPLEXITY_SCAFFOLDING`/`HIGH_COMPLEXITY_SQL_SCAFFOLDING`)
+that ask the model to decompose the problem into intermediate steps before writing code/SQL,
+rather than just answering directly. (An earlier "prompt richness" lever —
+`Settings.prompt_sample_rows`, scaling how many sample rows appeared in the prompt — was
+removed in Phase 4 once `data_context_service.py` made it redundant; see `PHASES.md` Phase 4's
+complexity-tiering follow-up for why.) This keeps the two-call planner and the 500-row
+threshold meaningful.
 
 - Embeddings: `all-MiniLM-L6-v2` via sentence-transformers, loaded lazily on first RAG use
   (Phase 2) — not at import time
