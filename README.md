@@ -11,12 +11,13 @@ SQL querying, chart generation, and structured responses.
 
 ## What it does
 - Accepts CSV file input, or (once the platform lands) queries a warehouse directly
-- Understands data schema automatically
-- Retrieves relevant business context using RAG
+- Generates a dataset-agnostic context (row/column counts, dtypes, categorical values, numeric
+  ranges) from whatever file is actually uploaded — works on any CSV, not just the sample data
 - Routes questions to specialized agents using an LLM powered planner
 - Answers analytical questions using a Python agent with pandas
 - Queries data using a SQL agent with SQLite
-- Generates charts and visualizations using a Chart agent
+- Generates charts using an LLM-chosen chart spec (type + columns + aggregation) rendered by
+  deterministic Python — the LLM never writes charting code, only picks parameters
 - Retries automatically if generated code fails, with a complexity-scaled retry budget
 - Returns structured responses with full metadata
 
@@ -25,10 +26,12 @@ SQL querying, chart generation, and structured responses.
 - Groq (LLM provider) — `openai/gpt-oss-20b` (fast/cheap) and `openai/gpt-oss-120b`
   (strongest), dynamically routed by question complexity
 - Pandas, SQLite
-- FAISS, Sentence Transformers
+- FAISS, Sentence Transformers — RAG plumbing kept for Phase 4b (user-supplied context docs);
+  currently idle, since the one static corpus it served turned out redundant with hardcoded
+  prompt rules (see `PHASES.md` Phase 4)
 - Matplotlib, Tabulate
 - pydantic-settings — centralized config (Phase 2)
-- pytest — 119 automated tests as of Phase 3, 83.66% coverage (see `PHASES.md`)
+- pytest — 150+ automated tests as of Phase 4 (see `PHASES.md`)
 - ruff (lint) + GitHub Actions CI — matrix Python 3.11/3.13 (Phase 3)
 
 Planned as the platform builds out: Docker, dbt, BigQuery, Airflow, Great Expectations,
@@ -126,6 +129,7 @@ curl -X POST http://localhost:8000/ask \
     "agents_used": ["python"],
     "task_type": "analysis",
     "reasoning": "question asks for calculation so python agent is used",
+    "complexity": "low",
     "chart_path": null,
     "session_id": "7455452f-f6be-4770-93d9-f24186779432"
 }
@@ -152,8 +156,10 @@ POST /ask (JSON: file_path + question)  ← local dev/testing only
                                         ├─ Empty CSV? → 400 Bad Request
                                         │
                                         ↓
-                                  RAG Service (FAISS)
-                              retrieves business context
+                              Data Context Service
+                       generates dataset-agnostic context
+                    (row/col counts, dtypes, categorical values,
+                      numeric ranges) — pure pandas, no LLM call
                                         │
                                         ↓
                                 Planner Agent (Two-Call)
@@ -164,14 +170,15 @@ POST /ask (JSON: file_path + question)  ← local dev/testing only
                         ┌───────────────┼──────────┬─────────────┐
                         ↓               ↓          ↓             ↓
                    Python Agent     SQL Agent  Chart Agent  Out of Scope
-                   LLM+Pandas     LLM+SQLite  LLM+Matplotlib → clear message
-                        │               │          │
+                   LLM+Pandas     LLM+SQLite  LLM picks a    → clear message
+                        │               │      chart spec;
+                        │               │      deterministic
+                        │               │      code renders it
                         └───────────────┴──────────┘
                   Dynamic Model per Complexity:
                   low         → openai/gpt-oss-20b
                   medium/high → openai/gpt-oss-120b
                   Complexity also scales retry budget (2/3/5 attempts)
-                  and how many sample rows the prompt shows (3/5/10)
                   Artifacts named with session_id (charts + DBs)
                                         │
                                         ↓

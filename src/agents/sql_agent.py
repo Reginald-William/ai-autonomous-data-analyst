@@ -8,13 +8,28 @@ from src.services.rag_service import retrieve_context
 
 logger = logging.getLogger(__name__)
 
+# Same reasoning as python_agent.py's HIGH_COMPLEXITY_SCAFFOLDING: complexity
+# used to also scale prompt richness (PROMPT_SAMPLE_ROWS), which died when
+# data_context_service.py replaced the per-agent CSV peek with a fixed-size
+# shared context (Phase 4), leaving retry budget as the only real
+# differentiator between medium and high — which only helps after a first
+# attempt already failed. This targets first-attempt query quality on
+# genuinely multi-step questions instead.
+HIGH_COMPLEXITY_SQL_SCAFFOLDING = """
+        This question requires multiple steps (e.g. filtering, grouping, then comparing or
+        ranking results). Consider using a CTE (WITH clause) or subquery to compute
+        intermediate results clearly, rather than one dense query — this makes each step of
+        the logic easier to verify if the result looks incorrect.
+        """
+
+
 class SQLAgent:
     def __init__(self, client=None):
         self.client = client if client is not None else get_llm_client()
         self.model = DEFAULT_MODEL
         self.max_attempts = 3
 
-    def generate_sql(self, question: str, db_info: dict, rag_context: str = "") -> str:
+    def generate_sql(self, question: str, db_info: dict, data_context: str = "", rag_context: str = "", complexity: str = "medium") -> str:
         schema = f"Table: {db_info['table_name']}\n"
         schema += f"Columns: {db_info['columns']}\n"
         schema += f"Row count: {db_info['row_count']}"
@@ -24,14 +39,19 @@ class SQLAgent:
 
         {schema}
 
+        The underlying dataset looks like this:
+        {data_context}
+
         Additional business context:
         {rag_context}
 
         The user is asking: {question}
-
+        {HIGH_COMPLEXITY_SQL_SCAFFOLDING if complexity == "high" else ""}
         Write a SQLite SQL query to answer this question.
         Return only the SQL query, nothing else.
         Do not include any explanation or markdown.
+        Always double-quote column names in the query (e.g. "Total Revenue"), since column
+        names may contain spaces or other characters that are invalid as bare SQL identifiers.
         """
 
         response = self.client.chat.completions.create(
@@ -45,7 +65,7 @@ class SQLAgent:
 
         return response.choices[0].message.content.strip()
 
-    def fix_sql(self, question: str, failed_sql: str, error: str, db_info: dict, rag_context: str = "") -> str:
+    def fix_sql(self, question: str, failed_sql: str, error: str, db_info: dict, data_context: str = "", rag_context: str = "", complexity: str = "medium") -> str:
         schema = f"Table: {db_info['table_name']}\n"
         schema += f"Columns: {db_info['columns']}\n"
 
@@ -53,6 +73,9 @@ class SQLAgent:
         You are a SQL expert. You have access to a SQLite database with the following schema:
 
         {schema}
+
+        The underlying dataset looks like this:
+        {data_context}
 
         Additional business context:
         {rag_context}
@@ -64,8 +87,10 @@ class SQLAgent:
 
         But it failed with this error:
         {error}
-
+        {HIGH_COMPLEXITY_SQL_SCAFFOLDING if complexity == "high" else ""}
         Fix the SQL and return only the corrected query, nothing else.
+        Always double-quote column names in the query (e.g. "Total Revenue"), since column
+        names may contain spaces or other characters that are invalid as bare SQL identifiers.
         """
 
         response = self.client.chat.completions.create(
@@ -105,7 +130,7 @@ class SQLAgent:
     def clean_sql(self, sql: str) -> str:
       return sql.replace("```sql", "").replace("```", "").strip()
     
-    def run(self, question: str, file_path: str, complexity: str = "medium", session_id: str = None, original_filename: str = None) -> tuple[str, int, str]:
+    def run(self, question: str, file_path: str, complexity: str = "medium", session_id: str = None, original_filename: str = None, data_context: str = "") -> tuple[str, int, str]:
         self.model = get_model_for_complexity(complexity)
         self.max_attempts = get_retry_budget(complexity)
         logger.info(f"SQL agent running for question: {question} | complexity={complexity} | model={self.model} | max_attempts={self.max_attempts}")
@@ -113,7 +138,7 @@ class SQLAgent:
         db_info = load_csv_to_sqlite(file_path, session_id=session_id, original_filename=original_filename)
         rag_context = retrieve_context(question)
 
-        sql = self.generate_sql(question, db_info, rag_context)
+        sql = self.generate_sql(question, db_info, data_context, rag_context, complexity)
         sql = self.clean_sql(sql)
         logger.info(f"Generated SQL:\n{sql}")
 
@@ -131,6 +156,6 @@ class SQLAgent:
                 if attempt == self.max_attempts:
                     raise Exception(f"SQL agent failed after {self.max_attempts} attempts: {str(e)}")
 
-                sql = self.fix_sql(question, sql, str(e), db_info, rag_context)
+                sql = self.fix_sql(question, sql, str(e), db_info, data_context, rag_context, complexity)
                 sql = self.clean_sql(sql)
                 attempt += 1

@@ -15,5 +15,6 @@ class AnalysisResponse(BaseModel):
     agents_used: List[str] = []
     task_type: str = ""
     reasoning: str = ""
+    complexity: str = ""
     chart_path: Optional[str] = None
     session_id: Optional[str] = None

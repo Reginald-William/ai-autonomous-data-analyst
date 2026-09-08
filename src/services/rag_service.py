@@ -60,6 +60,18 @@ class RagIndex:
 
         logger.info(f"Total chunks created: {len(self.chunks)}")
 
+        if not self.chunks:
+            # No documents to index (e.g. docs/ is empty between Phase 4's
+            # RAG cleanup and Phase 4b's real corpus). encode([]) returns a
+            # shape with no second axis, so `.shape[1]` below would crash —
+            # this used to be unreachable when docs/ always had content,
+            # but isn't anymore. self.index stays None, and
+            # retrieve_context()'s existing "index not built yet" guard
+            # already returns "" safely for that case.
+            logger.warning(f"No documents found in {doc_folder} — RAG index left empty")
+            self.index = None
+            return
+
         embeddings = self._get_model().encode([chunk["content"] for chunk in self.chunks])
         embeddings = np.array(embeddings).astype('float32')
         logger.info(f"Embeddings generated with shape: {embeddings.shape}")

@@ -34,10 +34,6 @@ class Settings(BaseSettings):
     retry_budget_medium: int = 3
     retry_budget_high: int = 5
 
-    prompt_sample_rows_low: int = 3
-    prompt_sample_rows_medium: int = 5
-    prompt_sample_rows_high: int = 10
-
     # Minimum rows required to justify the high complexity model/tier
     high_complexity_row_threshold: int = 500
 
@@ -70,14 +66,6 @@ class Settings(BaseSettings):
     @property
     def retry_budget(self) -> dict:
         return {"low": self.retry_budget_low, "medium": self.retry_budget_medium, "high": self.retry_budget_high}
-
-    @property
-    def prompt_sample_rows(self) -> dict:
-        return {
-            "low": self.prompt_sample_rows_low,
-            "medium": self.prompt_sample_rows_medium,
-            "high": self.prompt_sample_rows_high,
-        }
 
 
 @lru_cache
