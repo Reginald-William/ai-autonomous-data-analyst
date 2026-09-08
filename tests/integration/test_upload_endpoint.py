@@ -189,3 +189,25 @@ def test_oversized_file_rejected(api_client, tmp_data_dir, monkeypatch):
 
     assert response.status_code == 400
     assert "10MB" in response.json()["detail"] or "size" in response.json()["detail"].lower()
+
+
+def test_two_files_under_same_field_rejected(api_client, tmp_data_dir, sample_csv_path, employees_csv_path):
+    """Regression test for docs/BUGS_FOUND.md #7: sending two files under
+    the same "file" form field (something Postman allows, though a normal
+    browser file-input can't) used to make FastAPI/Starlette silently bind
+    only one of them and discard the other with no error — the response
+    still came back 200 success processing whichever file happened to win,
+    giving no signal that a file was dropped. Now rejected outright with a
+    clear 400 instead of silently discarding data."""
+    with open(sample_csv_path, "rb") as f1, open(employees_csv_path, "rb") as f2:
+        response = api_client.post(
+            "/upload",
+            data={"question": "How many rows?"},
+            files=[
+                ("file", ("sample_data.csv", f1, "text/csv")),
+                ("file", ("employees.csv", f2, "text/csv")),
+            ],
+        )
+
+    assert response.status_code == 400
+    assert "one file" in response.json()["detail"].lower()

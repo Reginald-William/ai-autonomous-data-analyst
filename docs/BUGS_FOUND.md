@@ -53,11 +53,11 @@ intentionally left for a later phase, with which phase and why).
   but genuinely silent — someone could accidentally attach the wrong second file and get a
   confident 200 response processing the wrong dataset with no indication anything was
   discarded.
-- **Status:** `open` — not fixed. Fix would be validating the incoming form has at most one
-  file under `file` (FastAPI's `UploadFile` alone doesn't expose "how many were sent" for a
-  singular parameter — would need to inspect the raw `Request`'s form data, or switch the
-  parameter to `List[UploadFile]` and explicitly reject `len(files) > 1` with a clear 400).
-  Not scheduled to a specific phase yet.
+- **Status:** `fixed` — `upload_and_ask()` now takes a `Request` parameter and inspects
+  `(await request.form()).getlist("file")` before doing anything else; if more than one entry
+  exists under the `file` field, it raises a 400 ("Only one file may be uploaded per request")
+  instead of silently binding to whichever one FastAPI happened to pick. Regression test:
+  `tests/integration/test_upload_endpoint.py::test_two_files_under_same_field_rejected`.
 
 ### 8. Chart agent crashed re-parsing its own input after a prompt-rule addition
 
@@ -78,9 +78,10 @@ intentionally left for a later phase, with which phase and why).
 - **Severity:** Medium — non-deterministic (only some LLM calls chose this parsing approach),
   and directly caused by adding more prompt instructions on top of an already-complex
   "write a full program" prompt.
-- **Status:** `deferred` — not point-fixed. This motivated the chart-agent redesign (chart
-  spec instead of chart code) documented in `PHASES.md` Phase 4, which structurally prevents
-  this class of bug rather than patching this one instance.
+- **Status:** `fixed` (structurally, not point-fixed) — this exact bug can no longer recur: the
+  chart-agent redesign (chart spec instead of chart code, `PHASES.md` Phase 4) means the LLM
+  never writes matplotlib code at all anymore, so there's no "LLM chooses a broken pandas
+  parsing approach" step left in the pipeline for this class of bug to happen in.
 
 ### 9. Chart spec's invented `y_column` name crashed count-shaped chart requests
 

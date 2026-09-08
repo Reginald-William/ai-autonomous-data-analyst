@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
 from uuid import uuid4
 from src.services.analyst_service import analyse
@@ -31,6 +31,7 @@ def ask_question(request: AskRequest):
 
 @router.post("/upload", response_model=AnalysisResponse)
 async def upload_and_ask(
+    request: Request,
     question: str = Form(...),
     session_id: str = Form(None),
     file: UploadFile = File(None),
@@ -45,6 +46,20 @@ async def upload_and_ask(
        The server reuses the previously uploaded file for the session duration (30 min).
     """
     logger.info(f"Request received: POST /upload | session_id={session_id}")
+
+    # FastAPI's `file: UploadFile = File(None)` binds to whichever file the
+    # client sent under the "file" field — if a client sends more than one
+    # under that same field name (Postman allows this; a normal browser
+    # file-input cannot), FastAPI/Starlette silently binds only one of them
+    # and the rest are discarded with no error at all. Inspecting the raw
+    # form here catches that before it can silently drop data.
+    form = await request.form()
+    file_entries = form.getlist("file")
+    if len(file_entries) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Only one file may be uploaded per request. Please send a single file."
+        )
 
     # --- Follow-up request: reuse existing session ---
     if session_id:
