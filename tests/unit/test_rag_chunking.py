@@ -1,48 +1,16 @@
 """
-Tests for the document-loading and paragraph-chunking logic in
-src/services/rag_service.py — load_documents() and split_into_chunks().
+Tests for the paragraph-chunking logic in src/services/rag_service.py —
+split_into_chunks(). load_documents() (folder-of-.txt-files loading) was
+removed in Phase 4b along with the global docs/-based RAG index — RAG is now
+built per-session from one uploaded document's text, via
+build_session_index(), not a folder scan. See PHASES.md Phase 4b.
 
-These two functions are pure (no FAISS, no embeddings), but importing this
-module still pays the ~35s SentenceTransformer load cost from line 10 of
-rag_service.py, since Python has to run the whole file to get at any name
-inside it. That's a Phase 2 concern (see PHASES.md risk #8), not something
-fixed here — these tests use tmp_path so they never touch the real docs/
-folder.
+split_into_chunks() itself is unchanged and still pure (no FAISS, no
+embeddings) — it just operates on an in-memory list of
+{filename, content} dicts now, whether that list came from a folder scan
+(old) or a single uploaded document wrapped in a list (new).
 """
-from src.services.rag_service import load_documents, split_into_chunks
-
-
-def test_load_documents_reads_txt_files(tmp_path):
-    (tmp_path / "a.txt").write_text("Hello from file A.")
-    (tmp_path / "b.txt").write_text("Hello from file B.")
-
-    documents = load_documents(str(tmp_path))
-
-    filenames = {doc["filename"] for doc in documents}
-    assert filenames == {"a.txt", "b.txt"}
-
-
-def test_load_documents_skips_non_txt_files(tmp_path):
-    (tmp_path / "notes.txt").write_text("This should be loaded.")
-    (tmp_path / "image.png").write_bytes(b"\x89PNG fake bytes")
-    (tmp_path / "data.csv").write_text("col1,col2\n1,2\n")
-
-    documents = load_documents(str(tmp_path))
-
-    assert len(documents) == 1
-    assert documents[0]["filename"] == "notes.txt"
-
-
-def test_load_documents_returns_empty_list_for_empty_folder(tmp_path):
-    assert load_documents(str(tmp_path)) == []
-
-
-def test_load_documents_preserves_file_content(tmp_path):
-    (tmp_path / "routing_rules.txt").write_text("Use python for calculations.")
-
-    documents = load_documents(str(tmp_path))
-
-    assert documents[0]["content"] == "Use python for calculations."
+from src.services.rag_service import split_into_chunks
 
 
 def test_split_into_chunks_keeps_paragraphs_with_five_or_more_words():

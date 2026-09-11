@@ -9,7 +9,6 @@ import os
 import asyncio
 
 from src.routes.ask import router as ask_router
-from src.services.rag_service import build_index
 from src.services.session_service import cleanup_expired_sessions, cleanup_orphaned_files
 
 load_dotenv()  # reads variables from a .env file and sets them in os.environ
@@ -33,9 +32,6 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/uploads", exist_ok=True)
     os.makedirs("data/charts", exist_ok=True)
     cleanup_orphaned_files()
-    logger.info("Building FAISS index on startup")
-    build_index("docs")
-    logger.info("FAISS index ready")
     asyncio.create_task(session_cleanup_loop())
     logger.info("Session cleanup background task started")
     yield

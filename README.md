@@ -13,6 +13,9 @@ SQL querying, chart generation, and structured responses.
 - Accepts CSV file input, or (once the platform lands) queries a warehouse directly
 - Generates a dataset-agnostic context (row/column counts, dtypes, categorical values, numeric
   ranges) from whatever file is actually uploaded — works on any CSV, not just the sample data
+- Accepts an optional business-context document alongside the CSV (a column glossary,
+  terminology, fiscal-calendar notes — anything a developer couldn't pre-write) and retrieves
+  the relevant parts of it per question via a session-scoped RAG index
 - Routes questions to specialized agents using an LLM powered planner
 - Answers analytical questions using a Python agent with pandas
 - Queries data using a SQL agent with SQLite
@@ -26,12 +29,12 @@ SQL querying, chart generation, and structured responses.
 - Groq (LLM provider) — `openai/gpt-oss-20b` (fast/cheap) and `openai/gpt-oss-120b`
   (strongest), dynamically routed by question complexity
 - Pandas, SQLite
-- FAISS, Sentence Transformers — RAG plumbing kept for Phase 4b (user-supplied context docs);
-  currently idle, since the one static corpus it served turned out redundant with hardcoded
-  prompt rules (see `PHASES.md` Phase 4)
+- FAISS, Sentence Transformers — per-session RAG (Phase 4b) over an optional user-uploaded
+  business-context document; the original static `docs/` corpus was removed in Phase 4 once it
+  turned out redundant with hardcoded prompt rules (see `PHASES.md` Phase 4)
 - Matplotlib, Tabulate
 - pydantic-settings — centralized config (Phase 2)
-- pytest — 150+ automated tests as of Phase 4 (see `PHASES.md`)
+- pytest — 170+ automated tests as of Phase 4b (see `PHASES.md`)
 - ruff (lint) + GitHub Actions CI — matrix Python 3.11/3.13 (Phase 3)
 
 Planned as the platform builds out: Docker, dbt, BigQuery, Airflow, Great Expectations,
@@ -100,6 +103,17 @@ curl -X POST http://localhost:8000/upload \
   -F "question=Show me a bar chart of that" \
   -F "session_id=<session_id_from_response>"
 ```
+
+**With an optional business-context document** (a column glossary, terminology, or similar —
+text describing this specific dataset that a developer couldn't have pre-written):
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "question=What does won mean in this data?" \
+  -F "file=@sample_data.csv" \
+  -F "context_file=@business_context.txt"
+```
+The context document is scoped to that session only — it's retrieved for later questions in the
+same session without needing to be re-uploaded, and never affects any other session.
 
 Sessions expire after 30 minutes of inactivity.
 

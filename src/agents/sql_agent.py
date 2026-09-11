@@ -4,7 +4,7 @@ from contextlib import closing
 from tabulate import tabulate
 from src.services.llm_service import get_llm_client, get_model_for_complexity, get_retry_budget, DEFAULT_MODEL
 from src.services.database_service import load_csv_to_sqlite
-from src.services.rag_service import retrieve_context
+from src.services.rag_service import retrieve_session_context
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ class SQLAgent:
         logger.info(f"SQL agent running for question: {question} | complexity={complexity} | model={self.model} | max_attempts={self.max_attempts}")
 
         db_info = load_csv_to_sqlite(file_path, session_id=session_id, original_filename=original_filename)
-        rag_context = retrieve_context(question)
+        rag_context = retrieve_session_context(session_id, question)
 
         sql = self.generate_sql(question, db_info, data_context, rag_context, complexity)
         sql = self.clean_sql(sql)

@@ -4,8 +4,8 @@
 scoped to roughly one weekend at ~10 hrs/week, has its own branch, and ends mergeable. Work
 **one phase per chat session** — read this file first to find the current phase.
 
-**Last updated:** 2026-08-28 · **Current phase:** 3 complete, 4 up next · **Branch:**
-`claude/v6.2-ci`
+**Last updated:** 2026-09-11 · **Current phase:** 4b complete, 5 up next · **Branch:**
+`claude/v6.4-rag-context`
 
 ---
 
@@ -54,8 +54,8 @@ testing?"
 | 1 | Resurrection + first tests | `claude/v6-revive-and-test` | 1 | Aug 2026 | ✅ Done |
 | 2 | Config + DI refactor | `claude/v6.1-config-di` | 1 | Sep 2026 | ✅ Done |
 | 3 | API + integration tests, CI | `claude/v6.2-ci` | 1 | Sep 2026 | ✅ Done |
-| 4 | Dynamic data context | `claude/v6.3-data-context` | 1 | Sep 2026 | ⬜ |
-| 4b | User-supplied RAG context | `claude/v6.4-rag-context` | 1 | Sep 2026 | ⬜ |
+| 4 | Dynamic data context | `claude/v6.3-data-context` | 1 | Sep 2026 | ✅ Done |
+| 4b | User-supplied RAG context | `claude/v6.4-rag-context` | 1 | Sep 2026 | ✅ Done |
 | 5 | Docker + Cloud Run + security | `claude/v7-deploy` | 2 | Sep–Oct 2026 | ⬜ |
 | 6 | Ingestion: source TBD → Parquet | `claude/v8-ingestion` | 1 | Oct 2026 | ⬜ |
 | 7 | dbt + BigQuery: staging → marts | `claude/v9-dbt-bigquery` | 2 | Oct 2026 | ⬜ |
@@ -426,9 +426,9 @@ The now-dead `get_sample_rows()`/`PROMPT_SAMPLE_ROWS`/`prompt_sample_rows_*` wer
 
 ---
 
-## Phase 4b — User-supplied RAG context ⬜
+## Phase 4b — User-supplied RAG context ✅
 
-**Branch:** `claude/v6.4-rag-context` · **1 weekend**
+**Branch:** `claude/v6.4-rag-context` · **1 weekend** · **Completed 2026-09-11**
 
 ### Why this phase exists
 
@@ -474,6 +474,28 @@ a lighter-weight embedding stack (see Phase 5's updated note), not RAG removal.
 
 - `docs/routing_rules.txt`, `retrieve_routing_context()` — already deleted in Phase 4; this
   phase doesn't reintroduce them.
+
+**Implemented, reusing existing plumbing:** `python_agent.py`/`sql_agent.py` already had an
+`rag_context` prompt parameter left over from the removed global RAG — Phase 4b just swapped
+its source. `retrieve_context()`/global `RagIndex`/`build_index("docs")` deleted; added
+`build_session_index()`, `retrieve_session_context()`, `drop_session()` in `rag_service.py`
+over a module-level `{session_id: RagIndex}` dict. `/upload` gained an optional `context_file`
+field (rejects duplicates, empty, oversized `Settings.max_context_doc_size`, and non-UTF-8 —
+same pattern as the existing CSV checks). `session_service._delete_session_files()` now also
+calls `drop_session()`, so a session's RAG index rides the same sliding TTL as its CSV/DB
+files. `python_agent.run()` gained the `session_id` param it was missing.
+
+**Verified live** (2026-09-11, manual Postman + real Groq API): a session with an uploaded
+glossary term correctly resolved a question using it; a fresh session without one didn't;
+isolation confirmed between two concurrent sessions with different glossaries.
+
+**Tests:** `tests/unit/test_rag_service.py` (7, new — isolation, no-op cases) and 8 new
+integration tests in `test_upload_endpoint.py` (retrieval, isolation, the 4 rejection cases),
+both using a fake bag-of-words embedder so the suite never loads the real SentenceTransformer.
+170 total tests, 91% coverage, `ruff check .` clean.
+
+**Also noted, not acted on:** risk register #22 below — free-tier Groq models are adequate for
+this portfolio but not at parity with current frontier models; a future upgrade candidate.
 
 **Done when:** a session that uploads a context document alongside its CSV gets answers that
 correctly incorporate that document's content for a question it's actually relevant to, and a
@@ -780,7 +802,7 @@ during Phases 1–13.
 | 4 | Pipeline is file-path-shaped; Python agent assumes one in-memory df | High | 8 |
 | 5 | BigQuery cost blowout — LLM `SELECT *` with no `maximum_bytes_billed` | High | 7, 8 |
 | 6 | Docker image ~3.5 GB from torch/faiss for a 3 KB corpus | High | 5 |
-| 7 | RAG hardcoded to TechMart — other datasets rejected out-of-scope | High | 4 |
+| 7 | ~~RAG hardcoded to TechMart — other datasets rejected out-of-scope~~ — **Resolved in Phase 4** via `data_context_service.py`; the underlying hardcoded RAG docs were removed entirely and replaced with Phase 4b's per-session RAG | High | 4 ✅ |
 | 8 | ~~Import-time singletons block clean testing~~ — **Resolved in Phase 2.** Confirmed 2026-08-26: `tests/unit/test_cleaners.py` took 35s because instantiating any agent imported `rag_service`, which loaded a real SentenceTransformer at import. Fixed by deferring the `SentenceTransformer`/`faiss` imports and model construction into `RagIndex` methods. Full suite time dropped 32.82s → 2.09s. | High | 2 ✅ |
 | 9 | Groq 8K TPM ceiling vs 131k-context models; needs backoff | Medium | 1, 4 |
 | 10 | Airflow on Windows needs WSL2; Composer has no free tier | Medium | 9 |
@@ -795,6 +817,7 @@ during Phases 1–13.
 | 19 | Global exception handler logs without `exc_info` — opaque failures | Low | 1 |
 | 20 | `TEST_RESULTS.md` documents 31 unreproducible results | Low | 3 |
 | 21 | `clean_code` is duplicated verbatim in `python_agent.py` and `chart_agent.py`, plus a near-identical `clean_sql` in `sql_agent.py` — found while writing `test_cleaners.py` (2026-08-26). Candidate for a shared helper, not urgent | Low | 2 |
+| 22 | `openai/gpt-oss-20b`/`120b` (the only free-tier Groq text models — see Phase 1) are not at parity with current frontier models. Fine for this portfolio's purposes (routing/codegen quality is adequate, and the point is demonstrating architecture, not chasing SOTA benchmarks), but worth revisiting once the project is no longer constrained to a single free-tier provider — e.g. if Phase 5+'s deploy step ever adds a paid-tier or alternate-provider option. Raised 2026-09-11 during Phase 4b manual verification — not a defect, a noted future upgrade candidate. | Low | Candidate — revisit post-13 |
 
 ## Cost summary — free tiers only
 

@@ -159,15 +159,15 @@ def api_client():
     """
     A FastAPI TestClient that does NOT trigger main.py's lifespan handler —
     constructed without the `with TestClient(app) as client:` context
-    manager form, so startup/shutdown events never fire. This matters
-    because lifespan calls build_index("docs"), which loads a real
-    SentenceTransformer and builds a real FAISS index — exactly the ~35s
-    import-time-equivalent cost Phase 2 removed from the unit suite.
+    manager form, so startup/shutdown events never fire. Since Phase 4b,
+    lifespan no longer builds any RAG index at all (RAG is per-session, built
+    on demand only when a session actually uploads a context document via
+    /upload), so this mostly just skips the session-cleanup background task.
 
-    Routes work fine without it: rag_service.retrieve_context() already
-    handles an unbuilt index by returning "" (see rag_service.py), which
-    every agent prompt treats as just an empty "Additional business
-    context" section — not an error.
+    Routes work fine without it: rag_service.retrieve_session_context()
+    already returns "" for any session with no uploaded context document
+    (see rag_service.py), which every agent prompt treats as just an empty
+    "Additional business context" section — not an error.
     """
     return TestClient(app)
 
@@ -176,13 +176,17 @@ def api_client():
 def clean_sessions():
     """
     session_service keeps sessions in a plain module-level dict
-    (`_sessions`), not reset between tests. Autouse means this runs for
-    every single test automatically (no need to request it by name),
-    clearing that dict before and after each test so session state from one
-    test can never leak into another — e.g. a session_id created in one
-    upload test being unexpectedly still valid in a later expiry test.
+    (`_sessions`), not reset between tests. rag_service similarly keeps
+    per-session RAG indexes in a module-level dict (`_session_indexes`,
+    Phase 4b). Autouse means this runs for every single test automatically
+    (no need to request it by name), clearing both before and after each
+    test so state from one test can never leak into another — e.g. a
+    session_id created in one upload test being unexpectedly still valid,
+    or still carrying a RAG index, in a later test.
     """
-    from src.services import session_service
+    from src.services import session_service, rag_service
     session_service._sessions.clear()
+    rag_service._session_indexes.clear()
     yield
     session_service._sessions.clear()
+    rag_service._session_indexes.clear()

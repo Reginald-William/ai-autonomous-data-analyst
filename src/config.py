@@ -47,12 +47,12 @@ class Settings(BaseSettings):
 
     # --- Uploads ---
     max_file_size: int = 10 * 1024 * 1024  # 10MB
+    max_context_doc_size: int = 2 * 1024 * 1024  # 2MB — business-context text/markdown doc
 
     # --- Paths ---
     data_dir: str = "data"
     uploads_dir: str = "data/uploads"
     charts_dir: str = "data/charts"
-    docs_dir: str = "docs"
 
     # --- RAG ---
     embedding_model: str = "all-MiniLM-L6-v2"
