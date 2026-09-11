@@ -97,9 +97,10 @@ phase table, to avoid the two documents drifting out of sync with each other.
 
 See [`PHASES.md`](PHASES.md) for the full 13-phase plan: resurrecting and testing the existing
 system (Phase 1, in progress), a config/DI refactor and CI (Phases 2-3), replacing the
-hardcoded RAG context (Phase 4), Docker + Cloud Run deployment (Phase 5), then the platform
-work itself — ingestion, dbt, BigQuery, Airflow, data quality (Phases 6-10) — followed by a
-LangGraph comparison, a Streamlit demo, and final polish (Phases 11-13).
+hardcoded RAG context and adding a real, user-supplied RAG use case (Phases 4-4b), Docker +
+Cloud Run deployment (Phase 5), then the platform work itself — ingestion, dbt, BigQuery,
+Airflow, data quality (Phases 6-10) — followed by a LangGraph comparison, a Streamlit demo, and
+final polish (Phases 11-13).
 
 ## Out of scope
 

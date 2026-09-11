@@ -3,7 +3,7 @@ import pandas as pd
 from contextlib import redirect_stdout
 from io import StringIO
 from src.services.llm_service import get_llm_client, get_model_for_complexity, get_retry_budget, DEFAULT_MODEL
-from src.services.rag_service import retrieve_context
+from src.services.rag_service import retrieve_session_context
 from fastapi import HTTPException
 import time
 
@@ -156,12 +156,12 @@ class PythonAgent:
             logger.error(f"Groq API call failed: {str(e)}")
             raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
 
-    def run(self, question: str, file_path: str, complexity: str = "medium", data_context: str = "") -> tuple[str, int, str]:
+    def run(self, question: str, file_path: str, complexity: str = "medium", data_context: str = "", session_id: str = None) -> tuple[str, int, str]:
         self.model = get_model_for_complexity(complexity)
         self.max_attempts = get_retry_budget(complexity)
         logger.info(f"Python agent running for question: {question} | complexity={complexity} | model={self.model} | max_attempts={self.max_attempts}")
 
-        rag_context = retrieve_context(question)
+        rag_context = retrieve_session_context(session_id, question)
         generated_code = self.clean_code(self.generate_code(question, data_context, rag_context, complexity))
         logger.info(f"Generated code:\n{generated_code}")
 

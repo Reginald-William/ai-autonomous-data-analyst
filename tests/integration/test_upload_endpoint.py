@@ -13,8 +13,33 @@ instead of attempting a real network call.
 """
 from unittest.mock import patch
 
+import numpy as np
+import pytest
+
 from src.services import analyst_service
+from src.services.rag_service import RagIndex
 from tests.conftest import FakeGroqClient
+
+# Phase 4b's context-document tests build a real per-session RagIndex, which
+# would otherwise load the real ~35s SentenceTransformer on first use (see
+# PHASES.md risk #8 / Phase 2's whole reason for lazy-loading it). This tiny
+# deterministic bag-of-words encoder stands in for it — good enough for
+# these tests, which only check whether specific words made it into a
+# retrieved chunk, not real embedding quality.
+_CONTEXT_TEST_VOCAB = ["won", "closed-deal", "session", "revenue", "fiscal"]
+
+
+class _FakeEmbeddingModel:
+    def encode(self, texts):
+        return np.array(
+            [[text.lower().count(word) for word in _CONTEXT_TEST_VOCAB] for text in texts],
+            dtype="float32",
+        )
+
+
+@pytest.fixture(autouse=True)
+def fake_embedding_model(monkeypatch):
+    monkeypatch.setattr(RagIndex, "_get_model", lambda self: _FakeEmbeddingModel())
 
 
 def _with_fake_client(fake_client):
@@ -189,6 +214,172 @@ def test_oversized_file_rejected(api_client, tmp_data_dir, monkeypatch):
 
     assert response.status_code == 400
     assert "10MB" in response.json()["detail"] or "size" in response.json()["detail"].lower()
+
+
+class _PromptSpyClient(FakeGroqClient):
+    """Records every prompt this client is asked to complete, so tests can
+    assert on what actually reached the LLM — specifically, whether the
+    "Additional business context" section carried the uploaded context
+    document's content (Phase 4b)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.prompts = []
+
+    def create(self, model, messages, temperature=0.1, **kwargs):
+        self.prompts.append(self._prompt_text(messages))
+        return super().create(model, messages, temperature, **kwargs)
+
+
+def test_context_document_is_retrieved_into_agent_prompt(api_client, tmp_data_dir, sample_csv_path):
+    """A session that uploads a context document alongside its CSV gets that
+    document's content threaded into the python agent's prompt for a
+    relevant question — the core Phase 4b behavior."""
+    spy_client = _PromptSpyClient(
+        plan={"task_type": "analysis", "agents": ["python"], "reasoning": "revenue"},
+        code="print(df['revenue'].sum())",
+    )
+
+    with _with_fake_client(spy_client):
+        with open(sample_csv_path, "rb") as f:
+            response = api_client.post(
+                "/upload",
+                data={"question": "What does won mean in our data?"},
+                files={
+                    "file": ("sample_data.csv", f, "text/csv"),
+                    "context_file": (
+                        "context.txt",
+                        b"In our pipeline, won means a closed-deal, not just a signed contract.",
+                        "text/plain",
+                    ),
+                },
+            )
+
+    assert response.status_code == 200
+    code_gen_prompts = [p for p in spy_client.prompts if "data analyst" in p.lower()]
+    assert any("closed-deal" in p for p in code_gen_prompts)
+
+
+def test_no_context_document_means_no_business_context_added(api_client, tmp_data_dir, sample_csv_path):
+    """Regression: a session that never uploads a context_file must behave
+    exactly as before Phase 4b — no business context text in the prompt."""
+    spy_client = _PromptSpyClient(
+        plan={"task_type": "analysis", "agents": ["python"], "reasoning": "revenue"},
+        code="print(df['revenue'].sum())",
+    )
+
+    with _with_fake_client(spy_client):
+        with open(sample_csv_path, "rb") as f:
+            response = api_client.post(
+                "/upload",
+                data={"question": "What is total revenue?"},
+                files={"file": ("sample_data.csv", f, "text/csv")},
+            )
+
+    assert response.status_code == 200
+    code_gen_prompts = [p for p in spy_client.prompts if "data analyst" in p.lower()]
+    assert code_gen_prompts  # sanity: the python agent did run
+    assert not any("closed-deal" in p for p in code_gen_prompts)
+
+
+def test_context_document_isolated_to_its_own_session(api_client, tmp_data_dir, sample_csv_path):
+    """Session A's uploaded context document must never leak into session
+    B's answers, even when both sessions are active at once."""
+    spy_client = _PromptSpyClient(
+        plan={"task_type": "analysis", "agents": ["python"], "reasoning": "revenue"},
+        code="print(df['revenue'].sum())",
+    )
+
+    with _with_fake_client(spy_client):
+        with open(sample_csv_path, "rb") as f:
+            api_client.post(
+                "/upload",
+                data={"question": "What does won mean?"},
+                files={
+                    "file": ("sample_data.csv", f, "text/csv"),
+                    "context_file": (
+                        "context.txt",
+                        b"In our pipeline, won means a closed-deal for session A only.",
+                        "text/plain",
+                    ),
+                },
+            )
+
+        with open(sample_csv_path, "rb") as f:
+            api_client.post(
+                "/upload",
+                data={"question": "What is total revenue?"},
+                files={"file": ("sample_data.csv", f, "text/csv")},
+            )
+
+    code_gen_prompts = [p for p in spy_client.prompts if "data analyst" in p.lower()]
+    assert not any("session A only" in p for p in code_gen_prompts[1:])
+
+
+def test_context_document_rejects_non_utf8_content(api_client, tmp_data_dir, sample_csv_path):
+    with open(sample_csv_path, "rb") as f:
+        response = api_client.post(
+            "/upload",
+            data={"question": "Anything"},
+            files={
+                "file": ("sample_data.csv", f, "text/csv"),
+                "context_file": ("image.png", b"\x89PNG\r\n\x1a\n\x00\x00\x00", "image/png"),
+            },
+        )
+
+    assert response.status_code == 400
+    assert "plain text" in response.json()["detail"].lower()
+
+
+def test_context_document_rejects_empty_file(api_client, tmp_data_dir, sample_csv_path):
+    with open(sample_csv_path, "rb") as f:
+        response = api_client.post(
+            "/upload",
+            data={"question": "Anything"},
+            files={
+                "file": ("sample_data.csv", f, "text/csv"),
+                "context_file": ("context.txt", b"", "text/plain"),
+            },
+        )
+
+    assert response.status_code == 400
+    assert "empty" in response.json()["detail"].lower()
+
+
+def test_context_document_rejects_oversized_file(api_client, tmp_data_dir, sample_csv_path, monkeypatch):
+    """Exercises Settings.max_context_doc_size without actually uploading a
+    multi-MB file — monkeypatches the cap down to a few bytes."""
+    from src.config import get_settings
+    monkeypatch.setattr(get_settings(), "max_context_doc_size", 5)
+
+    with open(sample_csv_path, "rb") as f:
+        response = api_client.post(
+            "/upload",
+            data={"question": "Anything"},
+            files={
+                "file": ("sample_data.csv", f, "text/csv"),
+                "context_file": ("context.txt", b"This context document is longer than 5 bytes.", "text/plain"),
+            },
+        )
+
+    assert response.status_code == 400
+    assert "exceeds" in response.json()["detail"].lower()
+
+
+def test_two_context_files_under_same_field_rejected(api_client, tmp_data_dir, sample_csv_path):
+    with open(sample_csv_path, "rb") as f:
+        response = api_client.post(
+            "/upload",
+            data={"question": "Anything"},
+            files=[
+                ("file", ("sample_data.csv", f, "text/csv")),
+                ("context_file", ("a.txt", b"First context document with enough words.", "text/plain")),
+                ("context_file", ("b.txt", b"Second context document with enough words.", "text/plain")),
+            ],
+        )
+
+    assert response.status_code == 400
+    assert "one context document" in response.json()["detail"].lower()
 
 
 def test_two_files_under_same_field_rejected(api_client, tmp_data_dir, sample_csv_path, employees_csv_path):

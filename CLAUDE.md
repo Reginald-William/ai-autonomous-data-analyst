@@ -10,8 +10,12 @@ dead Llama IDs. **Phase 2 (config + DI refactor) is also complete** — `src/con
 Groq client, injectable agent clients via `build_agents()`, and a lazy RAG index. **Phase 3
 (API + integration tests, CI) is also complete** — integration tests for `/upload`/`/ask`,
 two real bugs found and fixed (see `docs/BUGS_FOUND.md`), a live-API test file, and a GitHub
-Actions CI workflow. **Phase 4 (dynamic data context) is next**, on branch
-`claude/v6.3-data-context`.
+Actions CI workflow. **Phase 4 (dynamic data context) is complete** — dataset-agnostic
+`data_context_service.py`, a chart-spec redesign, and complexity-tiered prompt scaffolding
+replaced the old TechMart-hardcoded RAG docs. **Phase 4b (user-supplied RAG context) is also
+complete** — RAG is now built per-session from an optional uploaded business-context document
+instead of a global `docs/` folder; see the RAG section below. **Phase 5 (Docker + Cloud Run +
+security) is next**, on branch `claude/v7-deploy`.
 
 **Project direction changed on 2026-08-24.** This repo is no longer heading toward a monetized
 SaaS product. It is now a **Data Engineering portfolio project**, targeting applications from
@@ -136,10 +140,19 @@ Follow-up: POST /upload (session_id + question, no file)
 - **`src/services/session_service.py`**: In-memory session store. Maps `session_id` →
   `{file_path, original_filename, created_at, last_accessed}`. TTL 30 minutes. Background
   cleanup every 5 minutes; startup sweep removes orphans.
-- **`src/services/rag_service.py`**: Builds a FAISS index on startup from `docs/`. **Known
-  problem:** `business_context.txt` and `data_dictionary.txt` describe TechMart Electronics and
-  are hardcoded to `sample_data.csv`, so questions about any other dataset get rejected as
-  out-of-scope. Fixed in Phase 4.
+- **`src/services/rag_service.py`**: Per-session RAG (Phase 4b) — no global index, no startup
+  build. `POST /upload` accepts an optional `context_file` (plain-text/Markdown business
+  context a developer could never pre-write, e.g. column glossaries, terminology, fiscal
+  calendar quirks). If provided, `build_session_index(session_id, text)` chunks and embeds it
+  into a `RagIndex` scoped to that session only, stored in a module-level
+  `{session_id: RagIndex}` dict; `retrieve_session_context(session_id, question)` returns ""
+  for any session that never uploaded one (the backward-compat guarantee — omitting
+  `context_file` changes nothing). `drop_session(session_id)` is called from
+  `session_service`'s TTL/cleanup path so a session's RAG index dies alongside its CSV and DB
+  files, on the same sliding TTL. The old global `docs/`-folder RAG (Phase 1-4) was removed
+  entirely once its one real content file, `routing_rules.txt`, turned out to duplicate rules
+  already hardcoded in agent prompts — see Phase 4's note and Phase 4b's rationale in
+  `PHASES.md`.
 - **`src/services/llm_service.py`**: Groq client, `DEFAULT_MODEL`, `MODEL_ROUTING`, and
   `get_model_for_complexity()`. The client is now constructed lazily via a `@lru_cache`d
   `get_llm_client()` (Phase 2) — no client is built at import time. Model routing values are
@@ -156,8 +169,8 @@ Follow-up: POST /upload (session_id + question, no file)
 ## Configuration
 
 **Centralized in `src/config.py`** (Phase 2) — a `pydantic-settings` `Settings` class, accessed
-via the process-cached `get_settings()`. Owns model IDs, retry budget, prompt sample rows, the
-500-row complexity threshold, session TTL, max file size, all data/docs/upload/chart paths, the
+via the process-cached `get_settings()`. Owns model IDs, retry budget, the 500-row complexity
+threshold, session TTL, max CSV/context-doc upload sizes, data/upload/chart paths, the
 embedding model name, and RAG `top_k`/distance threshold. Every field is overridable via an env
 var or `.env` entry of the same name (uppercased); defaults match the values that were
 previously hardcoded, so no `.env` changes are required after this refactor.
@@ -175,10 +188,11 @@ removed in Phase 4 once `data_context_service.py` made it redundant; see `PHASES
 complexity-tiering follow-up for why.) This keeps the two-call planner and the 500-row
 threshold meaningful.
 
-- Embeddings: `all-MiniLM-L6-v2` via sentence-transformers, loaded lazily on first RAG use
-  (Phase 2) — not at import time
-- FAISS index built at startup in the `src/main.py` lifespan handler (still eager there, by
-  design — the app needs it ready before serving requests)
+- Embeddings: `all-MiniLM-L6-v2` via sentence-transformers, loaded lazily on first RAG use —
+  originally Phase 2 (deferred from import time), now also the trigger point in practice for
+  Phase 4b: the first `/upload` in a process that includes a `context_file` pays this load
+  once; every session after that reuses the same loaded model instance. No index of any kind
+  is built at startup anymore (removed in Phase 4b along with the global `docs/` index).
 - Environment: `GROQ_API_KEY` required in `.env`; the Groq client itself is constructed lazily
   on first use (Phase 2), not at import time
 - Groq free tier: 30 RPM, 1k RPD, **8K TPM**, 200k TPD — the TPM ceiling is tight against
@@ -190,10 +204,12 @@ threshold meaningful.
   12 rows
 - Test fixtures: `tests/data/` — `large_sales.csv` (1000 rows), `employees.csv`, `stocks.csv`,
   `missing_values.csv`, `special_chars.csv` (spaces/parens/slash in headers), `empty.csv`
-- RAG corpus: `docs/business_context.txt`, `docs/data_dictionary.txt`,
-  `docs/routing_rules.txt` (only the last is dataset-agnostic)
+- RAG corpus: none checked in. `docs/` only holds `BUGS_FOUND.md` — RAG content is now
+  entirely user-supplied at runtime (Phase 4b's optional `context_file` on `/upload`), never a
+  static file in the repo.
 - Generated at runtime, all gitignored: `data/{session_id}_{table_name}.db`,
-  `data/charts/{session_id}.png`, `data/uploads/{session_id}.csv`
+  `data/charts/{session_id}.png`, `data/uploads/{session_id}.csv`; a session's RAG index lives
+  only in `rag_service._session_indexes` (in-memory, not on disk)
 
 ## Known issues
 
@@ -215,7 +231,7 @@ to bite while working in this codebase:
 - **The pipeline is file-path-shaped.** `python_agent` assumes one in-memory dataframe, which
   breaks at warehouse scale. This is the deepest change ahead — Phase 8.
 
-## Current State (Phase 3 complete, Phase 4 next)
+## Current State (Phase 4b complete, Phase 5 next)
 
 V5 file upload merged to `main` via PR #3 (`3a07c1f`). `POST /upload` accepts CSVs via
 multipart/form-data, saved to `data/uploads/{session_id}.csv`, with a 30-minute session TTL so
@@ -250,7 +266,34 @@ path-traversal hole was confirmed live (not just theoretical) during this phase 
 reproduction against a real running server. 119 total tests (115 non-live + 4 live), 1 `xfail`,
 83.66% coverage.
 
-**Phase 4 (dynamic data context) is next**, on branch `claude/v6.3-data-context`: a
-`data_context_service.py` that generates dataset-agnostic context (row/column counts, dtypes,
-categorical values, numeric ranges) so the app stops being hardcoded to `sample_data.csv`'s
-TechMart shape.
+Phase 4 (dynamic data context, on `claude/v6.3-data-context`) is done: `data_context_service.py`
+generates dataset-agnostic context (row/column counts, dtypes, categorical values, numeric
+ranges) so the app stops being hardcoded to `sample_data.csv`'s TechMart shape; `sql_agent`
+quotes column names; `chart_agent` was redesigned from "LLM writes matplotlib code" to "LLM
+picks a small chart spec, hand-written code renders it"; complexity tiering gained
+`HIGH_COMPLEXITY_SCAFFOLDING`/`HIGH_COMPLEXITY_SQL_SCAFFOLDING` prompt instructions once the old
+`prompt_sample_rows` lever became dead code. Mid-phase, `docs/routing_rules.txt` and its RAG
+retrieval were removed entirely — the content duplicated rules already hardcoded in agent
+prompts, so retrieving it changed nothing the LLM saw. See `PHASES.md` Phase 4 for the full
+account of both mid-phase corrections.
+
+Phase 4b (user-supplied RAG context, on `claude/v6.4-rag-context`) is done: RAG's one real use
+case is now a user-uploaded business-context document (e.g. a column glossary, terminology, or
+fiscal-calendar note a developer could never pre-write), not a static repo file.
+`POST /upload` gained an optional `context_file` field; `rag_service.py` replaced the global
+`docs/`-folder `RagIndex` singleton with `build_session_index()`/`retrieve_session_context()`/
+`drop_session()` operating on a per-session `{session_id: RagIndex}` dict, so one session's
+document can never leak into another's answers; `python_agent`/`sql_agent` retrieve
+session-scoped context instead of the old global one, and `session_service`'s TTL cleanup now
+also drops each expired session's RAG index. A session that never uploads a `context_file`
+behaves exactly as before — the additive, backward-compatible pattern this project uses
+throughout. `main.py`'s lifespan no longer builds any index at startup; the embedding model
+loads lazily on the first `/upload` that actually includes a context document. 8 new tests
+(`test_rag_service.py`) plus integration coverage in `test_upload_endpoint.py` for retrieval,
+session isolation, and the new upload's validation (non-UTF-8, empty, oversized, duplicate
+field) — 170 total tests, 91% coverage.
+
+**Phase 5 (Docker + Cloud Run + security) is next**, on branch `claude/v7-deploy`. Per Phase
+4b's resolution of the Docker-size tradeoff (see `PHASES.md` Phase 5), RAG stays real rather
+than being removed — the fix there is swapping `sentence-transformers`+`torch` for ONNX
+embeddings (~90 MB), not dropping retrieval.

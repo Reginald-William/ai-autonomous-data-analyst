@@ -4,6 +4,8 @@ import logging
 import threading
 from datetime import datetime, timedelta
 
+from src.services import rag_service
+
 logger = logging.getLogger(__name__)
 
 # In-memory session store: session_id -> session data
@@ -107,3 +109,7 @@ def _delete_session_files(session_id: str, session: dict) -> None:
     for db_file in glob.glob(f"data/{session_id}_*.db"):
         if _safe_remove(db_file):
             logger.info(f"Deleted session DB: {db_file}")
+
+    # Discard this session's RAG index (if it uploaded a context document) —
+    # no-op if it never did
+    rag_service.drop_session(session_id)

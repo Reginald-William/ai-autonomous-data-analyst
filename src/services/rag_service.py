@@ -1,22 +1,10 @@
 import numpy as np
-import os
 import logging
 
 from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-
-def load_documents(doc_folder: str) -> list:
-    documents = []
-    for filename in os.listdir(doc_folder):
-        if filename.endswith('.txt'):
-            file_path = os.path.join(doc_folder, filename)
-            with open(file_path, 'r') as f:
-                content = f.read()
-                documents.append({"filename": filename, "content": content})
-            logger.info(f"Loaded document: {filename}")
-    return documents
 
 def split_into_chunks(documents: list) -> list:
     all_chunks = []
@@ -50,29 +38,23 @@ class RagIndex:
             self._model = SentenceTransformer(self._settings.embedding_model)
         return self._model
 
-    def build_index(self, doc_folder: str) -> None:
-        import faiss
+    def build_from_chunks(self, chunks: list) -> None:
+        """Embed an already-chunked document list and build this instance's
+        FAISS index from it. self.chunks stays [] / self.index stays None
+        when there are no usable chunks (e.g. every paragraph in the source
+        document was too short to survive split_into_chunks) — the existing
+        "index not built yet" guard in retrieve_context() already returns ""
+        safely for that case."""
+        self.chunks = chunks
 
-        logger.info("Building FAISS index")
-
-        documents = load_documents(doc_folder)
-        self.chunks = split_into_chunks(documents)
-
-        logger.info(f"Total chunks created: {len(self.chunks)}")
-
-        if not self.chunks:
-            # No documents to index (e.g. docs/ is empty between Phase 4's
-            # RAG cleanup and Phase 4b's real corpus). encode([]) returns a
-            # shape with no second axis, so `.shape[1]` below would crash —
-            # this used to be unreachable when docs/ always had content,
-            # but isn't anymore. self.index stays None, and
-            # retrieve_context()'s existing "index not built yet" guard
-            # already returns "" safely for that case.
-            logger.warning(f"No documents found in {doc_folder} — RAG index left empty")
+        if not chunks:
+            logger.warning("No usable chunks to index — RAG index left empty")
             self.index = None
             return
 
-        embeddings = self._get_model().encode([chunk["content"] for chunk in self.chunks])
+        import faiss
+
+        embeddings = self._get_model().encode([chunk["content"] for chunk in chunks])
         embeddings = np.array(embeddings).astype('float32')
         logger.info(f"Embeddings generated with shape: {embeddings.shape}")
 
@@ -104,19 +86,38 @@ class RagIndex:
         return "\n\n".join(relevant_chunks)
 
 
-_rag_index = None
+_session_indexes: dict[str, RagIndex] = {}
 
 
-def _get_rag_index() -> RagIndex:
-    global _rag_index
-    if _rag_index is None:
-        _rag_index = RagIndex()
-    return _rag_index
+def build_session_index(session_id: str, text: str, filename: str = "context.txt") -> None:
+    """Chunk and embed one user-uploaded business-context document into a
+    fresh, session-scoped RagIndex. Called only when a session's /upload
+    request actually includes a context document — a session that never
+    uploads one never gets an entry here, so it costs nothing (no embedding
+    model load, no FAISS index)."""
+    documents = [{"filename": filename, "content": text}]
+    chunks = split_into_chunks(documents)
+
+    index = RagIndex()
+    index.build_from_chunks(chunks)
+    logger.info(f"Session {session_id}: indexed {len(chunks)} chunk(s) from context document")
+
+    _session_indexes[session_id] = index
 
 
-def build_index(doc_folder: str) -> None:
-    _get_rag_index().build_index(doc_folder)
+def retrieve_session_context(session_id: str, question: str, top_k: int = None) -> str:
+    """Retrieve chunks from the given session's own context document, or ""
+    if that session never uploaded one. Session isolation is by construction:
+    each session's RagIndex only ever contains that session's own chunks."""
+    index = _session_indexes.get(session_id)
+    if index is None:
+        return ""
+    return index.retrieve_context(question, top_k)
 
 
-def retrieve_context(question: str, top_k: int = None) -> str:
-    return _get_rag_index().retrieve_context(question, top_k)
+def drop_session(session_id: str) -> None:
+    """Discard a session's RAG index, if it has one. Called from
+    session_service's cleanup path so session-scoped RAG data is deleted on
+    the same TTL/cleanup cadence as the session's uploaded CSV and DB files."""
+    if _session_indexes.pop(session_id, None) is not None:
+        logger.info(f"Deleted session RAG index: {session_id}")

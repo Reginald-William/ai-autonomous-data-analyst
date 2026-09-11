@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from uuid import uuid4
 from src.services.analyst_service import analyse
 from src.services.session_service import create_session, get_session
+from src.services.rag_service import build_session_index
+from src.config import get_settings
 from src.utils.schemas import AnalysisResponse
 import logging
 import os
@@ -35,6 +37,7 @@ async def upload_and_ask(
     question: str = Form(...),
     session_id: str = Form(None),
     file: UploadFile = File(None),
+    context_file: UploadFile = File(None),
 ):
     """
     Ask a question about a CSV file. Two ways to use this endpoint:
@@ -44,6 +47,14 @@ async def upload_and_ask(
 
     2. Follow-up request — send session_id + question, no file needed.
        The server reuses the previously uploaded file for the session duration (30 min).
+
+    Optional in either case: context_file — a plain-text/Markdown document
+    describing business context specific to this dataset (e.g. column
+    glossary, terminology, fiscal calendar) that a developer could never
+    pre-write. If provided, it's chunked and embedded into a RAG index
+    scoped to this session only, and relevant chunks are retrieved for each
+    question asked in the session. Omitting it changes nothing — no context
+    document means no business context is added to any prompt.
     """
     logger.info(f"Request received: POST /upload | session_id={session_id}")
 
@@ -59,6 +70,12 @@ async def upload_and_ask(
         raise HTTPException(
             status_code=400,
             detail="Only one file may be uploaded per request. Please send a single file."
+        )
+    context_file_entries = form.getlist("context_file")
+    if len(context_file_entries) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Only one context document may be uploaded per request."
         )
 
     # --- Follow-up request: reuse existing session ---
@@ -110,6 +127,31 @@ async def upload_and_ask(
         original_filename = file.filename
         create_session(session_id, file_path, original_filename)
         logger.info(f"File saved: {file_path} | original: {original_filename}")
+
+    # --- Optional business-context document (either request type) ---
+    if context_file is not None:
+        context_bytes = await context_file.read()
+
+        if len(context_bytes) == 0:
+            raise HTTPException(status_code=400, detail="Context document is empty.")
+
+        max_context_doc_size = get_settings().max_context_doc_size
+        if len(context_bytes) > max_context_doc_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Context document exceeds the {max_context_doc_size // (1024 * 1024)}MB limit."
+            )
+
+        try:
+            context_text = context_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail="Context document must be plain text or Markdown (UTF-8)."
+            )
+
+        build_session_index(session_id, context_text, filename=context_file.filename)
+        logger.info(f"Session {session_id}: indexed context document ({context_file.filename})")
 
     result = analyse(question, file_path, session_id=session_id, original_filename=original_filename)
     logger.info(f"Request completed | Status: {result.status} | Attempts: {result.attempts} | Time: {result.time_taken}")

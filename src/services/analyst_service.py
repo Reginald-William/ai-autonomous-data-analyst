@@ -116,7 +116,7 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
     try:
         if "python" in agents:
             logger.info("Routing to Python agent")
-            python_result, attempts, model_used = python_agent.run(question, file_path, complexity, data_context)
+            python_result, attempts, model_used = python_agent.run(question, file_path, complexity, data_context, session_id=session_id)
             agents_used.append("python")
             result_parts.append(python_result)
 
