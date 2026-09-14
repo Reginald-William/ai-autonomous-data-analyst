@@ -49,9 +49,17 @@ def test_ask_rejects_path_traversal(api_client, tmp_data_dir, enable_ask):
 
 
 def test_ask_rejects_absolute_path_outside_project(api_client, tmp_data_dir, enable_ask):
+    """An absolute path elsewhere on disk must be rejected regardless of OS.
+    Built from a sibling of the project root (tmp_data_dir's parent) rather
+    than a hardcoded OS-specific string like "C:/Windows/..." — that string
+    is only meaningfully "outside the project" on Windows; on Linux CI,
+    os.path.join treats it as a relative segment that lands back inside the
+    root, so the test would silently stop testing what it claims to."""
+    outside_path = tmp_data_dir.parent / "outside.csv"
+
     response = api_client.post(
         "/ask",
-        json={"question": "Anything", "file_path": "C:/Windows/System32/drivers/etc/hosts"},
+        json={"question": "Anything", "file_path": str(outside_path)},
     )
 
     assert response.status_code == 403
