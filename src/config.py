@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     # --- Sessions ---
     session_ttl_minutes: int = 30
 
+    # --- /ask endpoint ---
+    # /ask takes a caller-supplied file_path with no auth — fine for local
+    # dev/testing (see routes/ask.py's docstring), a live arbitrary-file-read
+    # risk on a public URL (see PHASES.md risk #3, confirmed live in Phase 3).
+    # Off by default so a deployed instance doesn't expose it without an
+    # explicit opt-in; the path-traversal allowlist in routes/ask.py applies
+    # regardless of this flag, as defense in depth.
+    enable_ask_endpoint: bool = False
+
     # --- Uploads ---
     max_file_size: int = 10 * 1024 * 1024  # 10MB
     max_context_doc_size: int = 2 * 1024 * 1024  # 2MB — business-context text/markdown doc
