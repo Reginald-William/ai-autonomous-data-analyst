@@ -260,6 +260,39 @@ def test_context_document_is_retrieved_into_agent_prompt(api_client, tmp_data_di
     assert any("closed-deal" in p for p in code_gen_prompts)
 
 
+def test_context_document_is_retrieved_into_planner_prompt(api_client, tmp_data_dir, sample_csv_path):
+    """Phase 5 follow-up to 4b: the planner runs before python/sql and can
+    reject a question as out_of_scope before either agent ever sees the
+    uploaded context document — found via live manual testing (2026-09-16)
+    when a glossary defining "senior employee" didn't stop the planner
+    from rejecting a question phrased in exactly that term. The planner's
+    own routing prompt must now also receive the session's RAG context."""
+    spy_client = _PromptSpyClient(
+        plan={"task_type": "analysis", "agents": ["python"], "reasoning": "revenue"},
+        code="print(df['revenue'].sum())",
+    )
+
+    with _with_fake_client(spy_client):
+        with open(sample_csv_path, "rb") as f:
+            response = api_client.post(
+                "/upload",
+                data={"question": "What does won mean in our data?"},
+                files={
+                    "file": ("sample_data.csv", f, "text/csv"),
+                    "context_file": (
+                        "context.txt",
+                        b"In our pipeline, won means a closed-deal, not just a signed contract.",
+                        "text/plain",
+                    ),
+                },
+            )
+
+    assert response.status_code == 200
+    planner_prompts = [p for p in spy_client.prompts if "planner for a data analysis system" in p.lower()]
+    assert planner_prompts  # sanity: the planner did run
+    assert any("closed-deal" in p for p in planner_prompts)
+
+
 def test_no_context_document_means_no_business_context_added(api_client, tmp_data_dir, sample_csv_path):
     """Regression: a session that never uploads a context_file must behave
     exactly as before Phase 4b — no business context text in the prompt."""

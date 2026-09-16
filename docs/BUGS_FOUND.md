@@ -11,6 +11,107 @@ intentionally left for a later phase, with which phase and why).
 
 ---
 
+## Phase 5
+
+### 13. RAG context never reached the planner — a glossary term could get rejected as out-of-scope
+
+- **File:** `src/agents/planner_agent.py`, `PlannerAgent.run()`
+- **Found by:** live manual testing against the real Groq API during Phase 5's broader edge-case
+  sweep (2026-09-16). Uploaded a context document defining "a senior employee is anyone with
+  age > 40" alongside `tests/data/employees.csv`, then asked "How many senior employees are
+  there?" — got rejected as `out_of_scope` despite the glossary explicitly defining the term.
+- **What's wrong:** `python_agent`/`sql_agent` both call `retrieve_session_context(session_id,
+  question)` (Phase 4b) to thread an uploaded business-context document into their own prompts,
+  but `PlannerAgent.run()` never accepted a `session_id` at all and never called it. Since the
+  planner runs first and can unilaterally short-circuit to `out_of_scope` before either agent
+  ever executes, a question phrased in glossary terms the document defines — exactly Phase 4b's
+  headline use case — could get rejected before the agent that *would* have understood it ever
+  ran.
+- **Severity:** Medium-High — undermines the core promise of a feature that shipped just one
+  phase earlier, for exactly the kind of question RAG exists to handle.
+- **Status:** `fixed` — `analyst_service.analyse()` now passes `session_id` into `planner.run()`;
+  `PlannerAgent.run()` accepts it, calls `retrieve_session_context()`, and splices the result
+  into the routing prompt's "Additional business context" section (same pattern already used in
+  python/sql agents). Verified live: the same question/glossary pair now correctly returns
+  "Number of senior employees: 3". Regression test:
+  `test_context_document_is_retrieved_into_planner_prompt`.
+
+### 14. Raw numpy/dict reprs leaking into user-facing output
+
+- **File:** `src/agents/python_agent.py`, `generate_code()`/`fix_code()` prompts
+- **Found by:** the same live sweep — "What is the average revenue, and how many rows have
+  missing region values?" returned `"(np.float64(13625.0), np.int64(1))"` as the answer text;
+  a separate vague "Analyze the sales data" question produced a large dict literal full of
+  `np.float64(...)`/`np.int64(...)` wrappers.
+- **What's wrong:** neither prompt told the model to format its final `print()` output as plain
+  text — when it built a `dict`/`tuple` of aggregated values (a natural pattern for
+  multi-metric answers) instead of formatting each value into a string first, Python's default
+  repr of numpy scalar types leaked straight into the API response.
+- **Severity:** Low — never a crash, purely a readability/UX issue, but a real one for an
+  end-user-facing API.
+- **Status:** `fixed` — both prompts now include "Print clean, human-readable output — never a
+  raw dict or tuple containing numpy types (e.g. `np.float64(...)`); convert values to plain
+  Python numbers/strings first." Verified live: the same missing-values question now returns
+  `"Average revenue: 13625.00, Missing region rows: 1"`.
+
+### 15. Count-shaped chart crash recurs when the model reuses `x_column` as `y_column`
+
+- **File:** `src/agents/chart_agent.py`, `prepare_chart_data()`
+- **Found by:** the same live sweep — "Show me a pie chart of deal count by deal_stage" on the
+  Novasphere dataset crashed with `could not convert string to float:
+  'ChurnChurnChurn...'`.
+- **What's wrong:** finding #9's fix detects a count-shaped question via `y_column not in
+  df.columns` (catches an invented placeholder name like `"count"`). This case's chart spec was
+  `{"x_column": "deal_stage", "y_column": "deal_stage", "aggregation": "none"}` — a real column,
+  reused for both axes, which is *also* a valid way for the model to express "count rows per
+  category" but isn't caught by #9's check. Falls through to the generic path, where
+  `x_column`'s duplicates auto-promote `aggregation` to `"sum"`, then `.agg("sum")` on a string
+  column does pandas' string-concatenation "sum," producing a giant repeated string that
+  `ax.pie()` can't plot.
+- **Severity:** Medium — same crash-on-a-common-question-shape severity as #9, just a case that
+  slipped through its fix. Confirmed non-deterministic: an equivalent question ("bar chart of
+  number of deals by region") on the same dataset didn't hit this path, because that time the
+  model picked `y_column="count"` (an invented name), correctly triggering #9's existing guard.
+- **Status:** `open`, not fixed in Phase 5 (kept in scope: Docker + security only). Same root
+  cause and fix family as #10-#12 below — grouped there for the Phase 13 revisit.
+
+### 16. Line/trend charts show scrambled daily dates instead of a chronological monthly trend
+
+- **File:** `src/agents/chart_agent.py`, `run()` (re-reads the raw CSV independently of what
+  `python_agent` already computed)
+- **Found by:** the same live sweep — "Show me a line chart of monthly revenue trend" on
+  `tests/data/large_sales.csv`. `python_agent` correctly computed a clean 36-row monthly
+  aggregate (`pd.Grouper(freq='ME')`). The rendered chart, titled "Monthly Revenue Trend (Top 15
+  of 652)," showed individual **daily** dates in non-chronological, value-sorted order (e.g.
+  2023-02-18, then 2022-02-12, then 2023-09-19) — not months at all.
+- **What's wrong:** `chart_agent.run()` calls `pd.read_csv(file_path)` on the *raw* file rather
+  than reusing python_agent's monthly aggregate, then groups by the literal daily date string
+  and applies the same top-15-by-value truncation used for categorical bar/pie charts — which
+  is meaningless for a time-ordered trend line and destroys the actual chronological signal.
+- **Severity:** High of this cluster — for a "trend over time" question specifically, the
+  rendered chart doesn't just look different, it's actively misleading (implies a real,
+  clean 15-point trend where none exists).
+- **Status:** `open`, not fixed in Phase 5. Same root cause as #10-#12 (chart_agent re-derives
+  from the raw file instead of consuming the upstream agent's result) — this is a fourth
+  concrete symptom of that one architectural gap, confirmed live. Reinforces that finding #12's
+  proposed fix (skip the shared truncation/groupby pipeline for chart types where it doesn't
+  apply — scatter, and now also date-ordered line/trend charts) should be scoped to cover this
+  case too when Phase 13 picks it up.
+
+### 17. (Observed, not confirmed as a pattern) Comparison questions can report only the winning value
+
+- **File:** `src/agents/python_agent.py`, `generate_code()` (LLM output shape, not a code bug)
+- **Found by:** the same live sweep — "Compare average salary trends across departments and
+  identify which department has the highest salary growth" returned only
+  `{'department': 'Marketing', 'salary_growth': -4000.0}` — the winning department's value, not
+  the full per-department comparison a user would need to sanity-check the answer.
+- **Severity:** Low — observed exactly once; not yet confirmed as a repeatable pattern worth a
+  prompt change.
+- **Status:** `open`, logged for awareness only. Needs more repro before acting — revisit if it
+  recurs.
+
+---
+
 ## Phase 4
 
 ### 6. `RagIndex.build_index()` crashes on an empty `docs/` folder

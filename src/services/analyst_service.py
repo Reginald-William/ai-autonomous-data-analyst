@@ -65,7 +65,7 @@ def analyse(question: str, file_path: str, session_id: str = None, original_file
     # ruled out of scope — see docs/BUGS_FOUND.md and PHASES.md Phase 4.
     data_context = generate_data_context(file_path)
 
-    plan = planner.run(question, row_count, data_context)
+    plan = planner.run(question, row_count, data_context, session_id=session_id)
     agents = plan.get("agents", ["python"])
     task_type = plan.get("task_type", "analysis")
     complexity = plan.get("complexity", "medium")
