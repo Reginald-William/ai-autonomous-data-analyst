@@ -217,10 +217,18 @@ Full ranked register with severities and owning phases is in `PHASES.md`. The on
 to bite while working in this codebase:
 
 - **All model IDs are dead** — nothing works until Phase 1a lands
-- **`exec()` of LLM-generated code is not sandboxed.** The dict named `safe_environment` in
-  `python_agent.py` and `chart_agent.py` is misleading — `exec` auto-injects `__builtins__`, so
-  `open`, `__import__`, and `os` are reachable. This is RCE if deployed publicly. Phase 5.
-- **`/ask` has a path-traversal hole** — caller-supplied `file_path`, unvalidated. Phase 5.
+- ~~**`exec()` of LLM-generated code is not sandboxed**~~ — **Fixed in Phase 5.**
+  `python_agent.execute_code()` is the only remaining `exec()` call site (`chart_agent.py`
+  stopped executing LLM-written code entirely in the Phase 4 redesign — the LLM only picks a
+  JSON chart spec now). Restricted `__builtins__`, an AST pre-check rejecting `import`
+  statements and dunder-attribute access, and a best-effort wall-clock timeout are documented
+  as defense-in-depth, not a hard guarantee, in `docs/THREAT_MODEL.md` — including the honest
+  gap that a thread-based timeout can't forcibly reclaim a hung snippet's CPU/memory the way a
+  subprocess kill could (noted there as a near-term follow-up).
+- ~~**`/ask` has a path-traversal hole**~~ — **Fixed in Phase 5.** `file_path` is resolved
+  against the project root and any escape is rejected (403); the endpoint itself is also
+  disabled by default (`Settings.enable_ask_endpoint`), so a deployed instance never exposes it
+  without an explicit opt-in.
 - ~~**Import-time side effects**~~ — **Fixed in Phase 2.** `llm_service.get_llm_client()` is now
   lazy (`@lru_cache`), `rag_service`'s `SentenceTransformer`/`faiss` load on first RAG use via a
   `RagIndex` class, and `analyst_service.build_agents()` replaces the four import-time agent
