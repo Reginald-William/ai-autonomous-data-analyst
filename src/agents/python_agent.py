@@ -6,7 +6,7 @@ import pandas as pd
 from contextlib import redirect_stdout
 from io import StringIO
 from src.services.llm_service import get_llm_client, get_model_for_complexity, get_retry_budget, DEFAULT_MODEL
-from src.services.rag_service import retrieve_session_context
+from src.services.rag_service import retrieve_session_context, format_context_block
 from fastapi import HTTPException
 import time
 
@@ -191,9 +191,7 @@ class PythonAgent:
         You are a data analyst. You have access to a CSV file with the following structure:
 
         {data_context}
-
-        Additional business context:
-        {rag_context}
+        {format_context_block(rag_context)}
 
         The user is asking: {question}
         {HIGH_COMPLEXITY_SCAFFOLDING if complexity == "high" else ""}
@@ -239,9 +237,7 @@ class PythonAgent:
         You are a data analyst. You have access to a CSV file with the following structure:
 
         {data_context}
-
-        Additional business context:
-        {rag_context}
+        {format_context_block(rag_context)}
 
         The user is asking: {question}
 

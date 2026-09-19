@@ -64,7 +64,16 @@ class Settings(BaseSettings):
     charts_dir: str = "data/charts"
 
     # --- RAG ---
+    # Phase 5: swapped from sentence-transformers (torch + transformers,
+    # ~2.5GB installed) to onnxruntime + tokenizers + a quantized ONNX
+    # export of the same model, bundled into the image at build time —
+    # never downloaded at runtime. Quality-parity verified against the
+    # original model in scripts/validate_onnx_embedder.py and
+    # scripts/validate_retrieval_threshold.py: quantization shifts raw
+    # similarity values slightly but changes zero retrieve/don't-retrieve
+    # decisions at this app's actual rag_distance_threshold.
     embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model_path: str = "models/all-MiniLM-L6-v2-onnx"
     rag_top_k: int = 3
     rag_distance_threshold: float = 1.5
 

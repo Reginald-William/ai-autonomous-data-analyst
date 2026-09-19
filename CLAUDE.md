@@ -15,7 +15,9 @@ Actions CI workflow. **Phase 4 (dynamic data context) is complete** — dataset-
 replaced the old TechMart-hardcoded RAG docs. **Phase 4b (user-supplied RAG context) is also
 complete** — RAG is now built per-session from an optional uploaded business-context document
 instead of a global `docs/` folder; see the RAG section below. **Phase 5 (Docker + Cloud Run +
-security) is next**, on branch `claude/v7-deploy`.
+security) is in progress**, on branch `claude/v7-deploy` — security fixes and the ONNX
+embedding swap are done; Dockerfile/Cloud Run deploy are not yet started. See the Current
+State section below for details.
 
 **Project direction changed on 2026-08-24.** This repo is no longer heading toward a monetized
 SaaS product. It is now a **Data Engineering portfolio project**, targeting applications from
@@ -188,11 +190,18 @@ removed in Phase 4 once `data_context_service.py` made it redundant; see `PHASES
 complexity-tiering follow-up for why.) This keeps the two-call planner and the 500-row
 threshold meaningful.
 
-- Embeddings: `all-MiniLM-L6-v2` via sentence-transformers, loaded lazily on first RAG use —
-  originally Phase 2 (deferred from import time), now also the trigger point in practice for
-  Phase 4b: the first `/upload` in a process that includes a `context_file` pays this load
-  once; every session after that reuses the same loaded model instance. No index of any kind
-  is built at startup anymore (removed in Phase 4b along with the global `docs/` index).
+- Embeddings: `all-MiniLM-L6-v2`, quantized ONNX export (`models/all-MiniLM-L6-v2-onnx/`,
+  ~22MB, bundled into the image at build time — never downloaded at runtime), run via
+  `onnxruntime` + `tokenizers` instead of `sentence-transformers`/`torch`/`transformers`
+  (Phase 5 — see PHASES.md's Docker-size tradeoff). `rag_service.py`'s `OnnxEmbedder` hand-
+  implements the mean-pooling + L2-normalization `sentence-transformers` did internally;
+  quality-parity against the original model was verified in `scripts/validate_onnx_embedder.py`
+  and `scripts/validate_retrieval_threshold.py` — quantization shifts raw similarity values
+  slightly but changes zero retrieve/don't-retrieve decisions at this app's actual
+  `rag_distance_threshold`. Loaded lazily on first RAG use, same trigger point as before
+  (first `/upload` that includes a `context_file`); every session after that reuses the same
+  loaded instance. No index of any kind is built at startup (removed in Phase 4b along with
+  the global `docs/` index).
 - Environment: `GROQ_API_KEY` required in `.env`; the Groq client itself is constructed lazily
   on first use (Phase 2), not at import time
 - Groq free tier: 30 RPM, 1k RPD, **8K TPM**, 200k TPD — the TPM ceiling is tight against
@@ -301,7 +310,16 @@ loads lazily on the first `/upload` that actually includes a context document. 8
 session isolation, and the new upload's validation (non-UTF-8, empty, oversized, duplicate
 field) — 170 total tests, 91% coverage.
 
-**Phase 5 (Docker + Cloud Run + security) is next**, on branch `claude/v7-deploy`. Per Phase
-4b's resolution of the Docker-size tradeoff (see `PHASES.md` Phase 5), RAG stays real rather
-than being removed — the fix there is swapping `sentence-transformers`+`torch` for ONNX
-embeddings (~90 MB), not dropping retrieval.
+**Phase 5 (Docker + Cloud Run + security), on branch `claude/v7-deploy`, is in progress.**
+Weekend 1 (security) is done: the `/ask` path-traversal hole is fixed and the endpoint is
+disabled by default; `python_agent.execute_code()`'s `exec()` is sandboxed (restricted
+`__builtins__`, an AST pre-check, a best-effort timeout — see `docs/THREAT_MODEL.md`); live
+edge-case testing against the real Groq API found and fixed several real bugs along the way
+(missing `pd`/`__build_class__` in the sandbox, `python_agent` writing chart/import code it
+shouldn't, the planner never seeing a session's RAG context, raw numpy reprs leaking into
+output) — see `docs/BUGS_FOUND.md`'s Phase 5 section. The `sentence-transformers`+`torch` ->
+ONNX embedding swap (RAG stays real, per Phase 4b's resolution of the Docker-size tradeoff) is
+also done: a quantized ONNX export of `all-MiniLM-L6-v2` (~22 MB, better than the ~90 MB
+originally estimated) bundled into `models/`, run via `onnxruntime`+`tokenizers` — see the
+Configuration section above. `requirements.txt` dropped from 79 to 65 packages. Weekend 2
+(Dockerfile, Cloud Run deploy, chart-image serving) is not yet started.

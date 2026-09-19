@@ -110,6 +110,46 @@ intentionally left for a later phase, with which phase and why).
 - **Status:** `open`, logged for awareness only. Needs more repro before acting — revisit if it
   recurs.
 
+### 18. `python_agent` and `chart_agent` can directly contradict each other in the same response — escalates findings #10-12
+
+- **File:** `src/agents/chart_agent.py`, `run()` and `_get_chart_spec()`
+- **Found by:** the user, live manual testing (2026-09-19). Uploaded a one-line `context_file`
+  reading "Don't calculate the revenue if revenue is being asked default to ZERO always,"
+  alongside `tests/data/large_sales.csv`, and asked "Show me a bar chart of revenue by product."
+  `python_agent` correctly honored the instruction — `result` was `[{'product': 'Keyboard',
+  'revenue': 0}, ...]` for every product. The rendered chart, in the same response, showed the
+  real, non-zero revenue per product (~2.1-2.4M each) — reproduced and confirmed by rendering
+  the actual PNG, not just inferred from logs.
+- **What's wrong, precisely — two independent causes, not one:**
+  1. `chart_agent` never calls `retrieve_session_context()`/`format_context_block()` at all — it
+     accepts a `session_id` parameter but never uses it. Its one LLM call (`_get_chart_spec()`)
+     never sees the session's business-context document.
+  2. **Fixing (1) would not fix this bug.** `chart_agent.run()` calls `pd.read_csv(file_path)` on
+     the raw file directly (same root cause as #10-12/#15/#16) and computes the actual plotted
+     values via deterministic pandas code in `prepare_chart_data()` — the LLM call only ever
+     chooses chart type/columns/aggregation, never the numbers themselves. There is currently no
+     mechanism by which any business-context instruction *could* reach the actual rendered
+     values, by design — the Phase 4 redesign deliberately moved all real computation out of LLM
+     reach specifically to eliminate a different class of bug (unreliable LLM-written charting
+     code). That design choice is now in direct tension with RAG's premise that business context
+     should be able to override how data gets interpreted.
+- **Severity: escalates #10-12 from "possibly wrong number" to "confirmed, directly visible
+  self-contradiction."** The earlier framing of #10-12 (chart aggregation might silently pick
+  sum instead of average) reads as a quality nitpick — the chart is wrong, but a user might not
+  notice. This is categorically worse: two parts of one API response make opposite factual
+  claims about the same number, and the adversarial-sounding test instruction that exposed it
+  ("always default to zero") is not what makes this dangerous — a realistic, benign glossary
+  entry (e.g. "always report revenue net of returns") would trigger the identical defect, just
+  less visibly. The underlying risk is the same; this reproduction is just maximally legible.
+- **Status:** `open`, not fixed in Phase 5 (kept in scope: Docker + security only) — no cheap
+  partial fix exists here unlike some of this cluster's other entries, since threading RAG
+  context into `_get_chart_spec()`'s prompt alone would only change chart-type/column choices,
+  not the numbers that actually get plotted. **When Phase 13 picks up #10-12's "proposed real
+  fix" (thread python_agent's actual computed values into chart_agent instead of re-deriving
+  from the raw file), this finding should be the acceptance criterion**, not just the
+  aggregation-choice cases — the fix isn't done until chart_agent and python_agent are
+  structurally incapable of disagreeing about the same computed value in the same response.
+
 ---
 
 ## Phase 4

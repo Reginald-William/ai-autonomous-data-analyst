@@ -1,7 +1,7 @@
 import logging
 import json
 from src.services.llm_service import get_llm_client, DEFAULT_MODEL, MODEL_ROUTING
-from src.services.rag_service import retrieve_session_context
+from src.services.rag_service import retrieve_session_context, format_context_block
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class PlannerAgent:
         # employee" meaning age > 40) could get rejected as out_of_scope
         # here before python/sql ever got a chance to see that definition.
         # Found via live manual testing, 2026-09-16.
-        rag_context = retrieve_session_context(session_id, question)
+        business_context = format_context_block(retrieve_session_context(session_id, question))
 
         routing_prompt = f"""
         You are a planner for a data analysis system.
@@ -91,9 +91,7 @@ class PlannerAgent:
 
         The actual uploaded dataset looks like this:
         {data_context}
-
-        Additional business context:
-        {rag_context}
+        {business_context}
 
         Based on the user question, decide which agents to use and in what order.
 
