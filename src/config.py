@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     data_dir: str = "data"
     uploads_dir: str = "data/uploads"
     charts_dir: str = "data/charts"
+    db_dir: str = "data"
 
     # --- RAG ---
     # Phase 5: swapped from sentence-transformers (torch + transformers,

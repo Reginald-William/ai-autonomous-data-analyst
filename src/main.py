@@ -8,6 +8,7 @@ import logging
 import os
 import asyncio
 
+from src.config import get_settings
 from src.routes.ask import router as ask_router
 from src.services.session_service import cleanup_expired_sessions, cleanup_orphaned_files
 
@@ -29,8 +30,9 @@ async def session_cleanup_loop():
 # Build FAISS index at startup function
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    os.makedirs("data/uploads", exist_ok=True)
-    os.makedirs("data/charts", exist_ok=True)
+    settings = get_settings()
+    os.makedirs(settings.uploads_dir, exist_ok=True)
+    os.makedirs(settings.charts_dir, exist_ok=True)
     cleanup_orphaned_files()
     asyncio.create_task(session_cleanup_loop())
     logger.info("Session cleanup background task started")

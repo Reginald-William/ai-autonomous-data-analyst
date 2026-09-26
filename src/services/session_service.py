@@ -4,6 +4,7 @@ import logging
 import threading
 from datetime import datetime, timedelta
 
+from src.config import get_settings
 from src.services import rag_service
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,8 @@ def cleanup_orphaned_files() -> None:
     """Delete all files in uploads, charts, and generated DB files on startup.
     These are orphans — server restarted and session memory was wiped, so
     there is no session that will ever clean them up."""
-    dirs = ["data/uploads", "data/charts"]
+    settings = get_settings()
+    dirs = [settings.uploads_dir, settings.charts_dir]
     total = 0
     for directory in dirs:
         for f in glob.glob(f"{directory}/*"):
@@ -43,7 +45,7 @@ def cleanup_orphaned_files() -> None:
     # Session-scoped SQLite databases (data/{session_id}_{table_name}.db) are
     # generated the same way — with no session left in memory, nothing else
     # will ever clean them up.
-    for db_file in glob.glob("data/*.db"):
+    for db_file in glob.glob(f"{settings.db_dir}/*.db"):
         if _safe_remove(db_file):
             total += 1
 
@@ -106,7 +108,7 @@ def _delete_session_files(session_id: str, session: dict) -> None:
             logger.info(f"Deleted session file: {file_path}")
 
     # Delete any generated DB files for this session (pattern: data/{session_id}_*.db)
-    for db_file in glob.glob(f"data/{session_id}_*.db"):
+    for db_file in glob.glob(f"{get_settings().db_dir}/{session_id}_*.db"):
         if _safe_remove(db_file):
             logger.info(f"Deleted session DB: {db_file}")
 

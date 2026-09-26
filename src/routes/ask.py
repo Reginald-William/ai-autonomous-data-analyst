@@ -140,7 +140,7 @@ async def upload_and_ask(
 
         # Generate a unique ID upfront so the filename and session_id match from the start
         session_id = str(uuid4())
-        file_path = f"data/uploads/{session_id}.csv"
+        file_path = f"{get_settings().uploads_dir}/{session_id}.csv"
 
         with open(file_path, "wb") as f:
             f.write(content)
